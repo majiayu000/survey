@@ -1,0 +1,94 @@
+package templates
+
+import (
+	"fmt"
+	"github.com/openmeet-team/survey/internal/models"
+)
+
+templ SurveyResults(survey *models.Survey, results *models.SurveyResults) {
+	@Layout(survey.Title + " - Results") {
+		<div class="card">
+			<h1>{ survey.Title }</h1>
+			<p style="color: #7f8c8d; margin-bottom: 2rem;">
+				Total Responses: <strong>{ fmt.Sprintf("%d", results.TotalVotes) }</strong>
+			</p>
+
+			<div
+				hx-get={ "/surveys/" + survey.Slug + "/results-partial" }
+				hx-trigger="every 5s"
+				hx-swap="innerHTML"
+				id="results-container"
+			>
+				@ResultsPartial(survey, results)
+			</div>
+
+			<div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #ecf0f1;">
+				<a href={ templ.URL("/surveys/" + survey.Slug) } class="btn btn-secondary">
+					← Back to Survey
+				</a>
+			</div>
+		</div>
+	}
+}
+
+templ ResultsPartial(survey *models.Survey, results *models.SurveyResults) {
+	for i, question := range survey.Definition.Questions {
+		<div style="margin-bottom: 3rem;">
+			<h3 style="margin-bottom: 1rem;">
+				{ fmt.Sprintf("%d. %s", i+1, question.Text) }
+			</h3>
+
+			if question.Type == models.QuestionTypeSingle || question.Type == models.QuestionTypeMulti {
+				if qResult, exists := results.QuestionResults[question.ID]; exists {
+					<div style="margin-top: 1rem;">
+						for _, option := range question.Options {
+							@optionResult(option, qResult, results.TotalVotes)
+						}
+					</div>
+				} else {
+					<p style="color: #7f8c8d; font-style: italic;">No responses yet</p>
+				}
+			} else if question.Type == models.QuestionTypeText {
+				if qResult, exists := results.QuestionResults[question.ID]; exists && len(qResult.TextAnswers) > 0 {
+					<div style="background: #f8f9fa; padding: 1rem; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+						for _, answer := range qResult.TextAnswers {
+							<div style="padding: 0.75rem; margin-bottom: 0.5rem; background: white; border-radius: 4px; border-left: 3px solid #3498db;">
+								{ answer }
+							</div>
+						}
+					</div>
+				} else {
+					<p style="color: #7f8c8d; font-style: italic;">No responses yet</p>
+				}
+			}
+		</div>
+	}
+}
+
+templ optionResult(option models.Option, qResult *models.QuestionResult, totalVotes int) {
+	<div style="margin-bottom: 1rem;">
+		<div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+			<span>{ option.Text }</span>
+			<span style="color: #7f8c8d;">{ formatOptionStats(qResult.OptionCounts[option.ID], totalVotes) }</span>
+		</div>
+		<div style="background: #ecf0f1; height: 30px; border-radius: 4px; overflow: hidden;">
+			<div style={ formatBarWidth(qResult.OptionCounts[option.ID], totalVotes) }></div>
+		</div>
+	</div>
+}
+
+func formatOptionStats(count, totalVotes int) string {
+	percentage := 0.0
+	if totalVotes > 0 {
+		percentage = float64(count) / float64(totalVotes) * 100
+	}
+	return fmt.Sprintf("%d votes (%.1f%%)", count, percentage)
+}
+
+func formatBarWidth(count, totalVotes int) string {
+	percentage := 0.0
+	if totalVotes > 0 {
+		percentage = float64(count) / float64(totalVotes) * 100
+	}
+	return fmt.Sprintf("background: linear-gradient(to right, #3498db, #2980b9); height: 100%%; width: %.1f%%; transition: width 0.3s ease;", percentage)
+}

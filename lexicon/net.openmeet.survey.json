@@ -1,0 +1,120 @@
+{
+  "lexicon": 1,
+  "id": "net.openmeet.survey",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A survey or poll definition that users can respond to.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["name", "questions", "createdAt"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 300,
+            "maxGraphemes": 100,
+            "description": "The name of the survey."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 3000,
+            "maxGraphemes": 1000,
+            "description": "Optional description or instructions for the survey."
+          },
+          "questions": {
+            "type": "array",
+            "minLength": 1,
+            "maxLength": 50,
+            "items": { "type": "ref", "ref": "#question" },
+            "description": "The list of questions in this survey."
+          },
+          "anonymous": {
+            "type": "boolean",
+            "description": "Whether to hide voter identities in results."
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the survey opens for responses."
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the survey closes for new responses."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Client-declared timestamp when the survey was created."
+          }
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "required": ["id", "text", "type"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Unique identifier for this question within the survey."
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1000,
+          "maxGraphemes": 300,
+          "description": "The question text."
+        },
+        "type": {
+          "type": "string",
+          "knownValues": [
+            "net.openmeet.survey#single",
+            "net.openmeet.survey#multi",
+            "net.openmeet.survey#text"
+          ],
+          "description": "Question type: single choice, multiple choice, or free text."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this question must be answered."
+        },
+        "options": {
+          "type": "array",
+          "maxLength": 20,
+          "items": { "type": "ref", "ref": "#option" },
+          "description": "Available options for choice questions."
+        }
+      }
+    },
+    "option": {
+      "type": "object",
+      "required": ["id", "text"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Unique identifier for this option within the question."
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 500,
+          "maxGraphemes": 150,
+          "description": "The option text."
+        }
+      }
+    },
+    "single": {
+      "type": "token",
+      "description": "A single-choice question where only one option can be selected."
+    },
+    "multi": {
+      "type": "token",
+      "description": "A multiple-choice question where multiple options can be selected."
+    },
+    "text": {
+      "type": "token",
+      "description": "A free-text question where the user provides a written response."
+    }
+  }
+}

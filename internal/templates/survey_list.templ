@@ -1,0 +1,48 @@
+package templates
+
+import (
+	"fmt"
+	"github.com/openmeet-team/survey/internal/models"
+)
+
+templ SurveyList(surveys []*models.Survey, counts map[string]int) {
+	@Layout("All Surveys") {
+		<div class="card">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+				<h1>All Surveys</h1>
+				<a href="/surveys/new" class="btn">Create Survey</a>
+			</div>
+
+			if len(surveys) == 0 {
+				<p style="text-align: center; color: #7f8c8d; padding: 3rem 0;">
+					No surveys yet. <a href="/surveys/new">Create your first survey!</a>
+				</p>
+			} else {
+				<div style="display: grid; gap: 1rem;">
+					for _, survey := range surveys {
+						<div class="card" style="padding: 1.5rem; border: 1px solid #ecf0f1;">
+							<h3>
+								<a href={ templ.URL("/surveys/" + survey.Slug) } style="color: #2c3e50; text-decoration: none;">
+									{ survey.Title }
+								</a>
+							</h3>
+							if survey.Description != nil {
+								<p style="color: #7f8c8d; margin-bottom: 1rem;">
+									{ *survey.Description }
+								</p>
+							}
+							<div style="display: flex; gap: 2rem; font-size: 0.9rem; color: #7f8c8d;">
+								<span>
+									<strong>{ fmt.Sprintf("%d", counts[survey.Slug]) }</strong> responses
+								</span>
+								<span>
+									Created { survey.CreatedAt.Format("Jan 2, 2006") }
+								</span>
+							</div>
+						</div>
+					}
+				</div>
+			}
+		</div>
+	}
+}

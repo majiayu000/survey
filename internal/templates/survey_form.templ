@@ -1,0 +1,83 @@
+package templates
+
+import (
+	"fmt"
+	"github.com/openmeet-team/survey/internal/models"
+)
+
+templ SurveyForm(survey *models.Survey) {
+	@Layout(survey.Title) {
+		<div class="card">
+			<h1>{ survey.Title }</h1>
+			if survey.Description != nil {
+				<p style="color: #7f8c8d; margin-bottom: 2rem;">
+					{ *survey.Description }
+				</p>
+			}
+
+			<form id="survey-form" hx-post={ "/surveys/" + survey.Slug + "/responses" } hx-swap="outerHTML" style="margin-top: 2rem;">
+				for i, question := range survey.Definition.Questions {
+					<div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid #ecf0f1;">
+						<label style="display: block; font-weight: 600; margin-bottom: 1rem; font-size: 1.1rem;">
+							{ fmt.Sprintf("%d. %s", i+1, question.Text) }
+							if question.Required {
+								<span style="color: #e74c3c;">*</span>
+							}
+						</label>
+
+						if question.Type == models.QuestionTypeSingle {
+							for _, option := range question.Options {
+								<div style="margin-bottom: 0.75rem;">
+									<label style="display: flex; align-items: center; cursor: pointer; padding: 0.5rem; border-radius: 4px; transition: background 0.2s;">
+										<input
+											type="radio"
+											name={ question.ID }
+											value={ option.ID }
+											required?={ question.Required }
+											style="margin-right: 0.75rem;"
+										/>
+										<span>{ option.Text }</span>
+									</label>
+								</div>
+							}
+						} else if question.Type == models.QuestionTypeMulti {
+							for _, option := range question.Options {
+								<div style="margin-bottom: 0.75rem;">
+									<label style="display: flex; align-items: center; cursor: pointer; padding: 0.5rem; border-radius: 4px; transition: background 0.2s;">
+										<input
+											type="checkbox"
+											name={ question.ID }
+											value={ option.ID }
+											style="margin-right: 0.75rem;"
+										/>
+										<span>{ option.Text }</span>
+									</label>
+								</div>
+							}
+						} else if question.Type == models.QuestionTypeText {
+							<textarea
+								name={ question.ID }
+								required?={ question.Required }
+								rows="4"
+								style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 1rem;"
+								placeholder="Your answer..."
+							></textarea>
+						}
+					</div>
+				}
+
+				<div style="margin-top: 2rem;">
+					<button type="submit" class="btn" style="width: 100%;">
+						Submit Response
+					</button>
+				</div>
+			</form>
+
+			<div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #ecf0f1;">
+				<a href={ templ.URL("/surveys/" + survey.Slug + "/results") } style="color: #3498db; text-decoration: none;">
+					View Results →
+				</a>
+			</div>
+		</div>
+	}
+}

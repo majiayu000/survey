@@ -1,0 +1,130 @@
+package templates
+
+templ CreateSurvey() {
+	@Layout("Create Survey") {
+		<div class="card">
+			<h1>Create New Survey</h1>
+			<p style="color: #7f8c8d; margin-bottom: 2rem;">
+				Define your survey using YAML or JSON format below.
+			</p>
+
+			<form action="/surveys" method="POST">
+				<div style="margin-bottom: 1.5rem;">
+					<label for="slug" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+						Slug (optional)
+					</label>
+					<input
+						type="text"
+						id="slug"
+						name="slug"
+						placeholder="my-survey-slug"
+						style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;"
+					/>
+					<small style="color: #7f8c8d; display: block; margin-top: 0.25rem;">
+						Leave empty to auto-generate from the first question. Use lowercase letters, numbers, and hyphens only.
+					</small>
+				</div>
+
+				<div style="margin-bottom: 1.5rem;">
+					<label for="definition" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+						Survey Definition <span style="color: #e74c3c;">*</span>
+					</label>
+					<textarea
+						id="definition"
+						name="definition"
+						required
+						rows="20"
+						style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.9rem;"
+						placeholder={ exampleYAML() }
+					></textarea>
+				</div>
+
+				<div style="margin-top: 2rem;">
+					<button type="submit" class="btn" style="width: 100%;">
+						Create Survey
+					</button>
+				</div>
+			</form>
+
+			<div style="margin-top: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 4px;">
+				<h3 style="margin-bottom: 1rem;">Example YAML Format</h3>
+				<pre style="background: white; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem;">{ exampleYAML() }</pre>
+			</div>
+
+			<div style="margin-top: 1rem; padding: 1.5rem; background: #f8f9fa; border-radius: 4px;">
+				<h3 style="margin-bottom: 1rem;">Example JSON Format</h3>
+				<pre style="background: white; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem;">{ exampleJSON() }</pre>
+			</div>
+		</div>
+	}
+}
+
+func exampleYAML() string {
+	return `anonymous: true
+questions:
+  - id: q1
+    text: "What's your favorite programming language?"
+    type: single
+    required: true
+    options:
+      - id: opt1
+        text: Go
+      - id: opt2
+        text: Python
+      - id: opt3
+        text: JavaScript
+      - id: opt4
+        text: Rust
+  - id: q2
+    text: "Which frameworks do you use? (select all that apply)"
+    type: multi
+    required: false
+    options:
+      - id: opt1
+        text: React
+      - id: opt2
+        text: Vue
+      - id: opt3
+        text: Angular
+  - id: q3
+    text: "Any additional comments?"
+    type: text
+    required: false`
+}
+
+func exampleJSON() string {
+	return `{
+  "anonymous": true,
+  "questions": [
+    {
+      "id": "q1",
+      "text": "What's your favorite programming language?",
+      "type": "single",
+      "required": true,
+      "options": [
+        {"id": "opt1", "text": "Go"},
+        {"id": "opt2", "text": "Python"},
+        {"id": "opt3", "text": "JavaScript"},
+        {"id": "opt4", "text": "Rust"}
+      ]
+    },
+    {
+      "id": "q2",
+      "text": "Which frameworks do you use?",
+      "type": "multi",
+      "required": false,
+      "options": [
+        {"id": "opt1", "text": "React"},
+        {"id": "opt2", "text": "Vue"},
+        {"id": "opt3", "text": "Angular"}
+      ]
+    },
+    {
+      "id": "q3",
+      "text": "Any additional comments?",
+      "type": "text",
+      "required": false
+    }
+  ]
+}`
+}

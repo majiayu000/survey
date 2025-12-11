@@ -1,0 +1,13 @@
+package templates
+
+templ ThankYou(slug string) {
+	<div class="success" style="text-align: center; padding: 3rem 2rem;">
+		<h2 style="color: white; margin-bottom: 1rem;">Thank You!</h2>
+		<p style="font-size: 1.1rem; margin-bottom: 2rem;">
+			Your response has been recorded successfully.
+		</p>
+		<a href={ templ.URL("/surveys/" + slug + "/results") } class="btn" style="background: white; color: #27ae60;">
+			View Results
+		</a>
+	</div>
+}

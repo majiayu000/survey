@@ -1,0 +1,57 @@
+{
+  "lexicon": 1,
+  "id": "net.openmeet.survey.response",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A user's response to a survey. One response per user per survey.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "answers", "createdAt"],
+        "properties": {
+          "subject": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "Reference to the survey being responded to."
+          },
+          "answers": {
+            "type": "array",
+            "minLength": 1,
+            "maxLength": 50,
+            "items": { "type": "ref", "ref": "#answer" },
+            "description": "The list of answers to survey questions."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Client-declared timestamp when the response was submitted."
+          }
+        }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "required": ["questionId"],
+      "properties": {
+        "questionId": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "The ID of the question being answered."
+        },
+        "selectedOptions": {
+          "type": "array",
+          "maxLength": 20,
+          "items": { "type": "string", "maxLength": 64 },
+          "description": "Selected option IDs for choice questions."
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 5000,
+          "maxGraphemes": 1500,
+          "description": "Free text answer for text questions."
+        }
+      }
+    }
+  }
+}

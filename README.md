@@ -121,6 +121,41 @@ questions:
     required: false
 ```
 
+## Testing
+
+### Unit Tests
+
+Run unit tests using mocks:
+```bash
+make test-unit
+# or
+go test -v ./...
+```
+
+### End-to-End Tests
+
+E2E tests use [testcontainers-go](https://golang.testcontainers.org/) to spin up a real PostgreSQL database and test the full HTTP flow.
+
+**Requirements:**
+- Docker must be running
+- Network access to pull `postgres:16-alpine` image
+
+**Run E2E tests:**
+```bash
+make test-e2e
+```
+
+**What's tested:**
+- Survey creation and listing (YAML/JSON parsing)
+- Response submission with validation
+- Duplicate vote prevention (voter session hashing)
+- Invalid answer rejection
+- Slug validation and auto-generation
+- Health check endpoints
+- Results aggregation
+
+E2E tests are tagged with `//go:build e2e` so they don't run with regular unit tests.
+
 ## Project Structure
 
 ```
@@ -130,12 +165,15 @@ survey/
 │   └── consumer/         # survey-consumer entrypoint (stub)
 ├── internal/
 │   ├── api/              # HTTP handlers, router, middleware
+│   │   ├── handlers_test.go     # Unit tests (mocks)
+│   │   └── e2e_test.go          # E2E tests (real DB)
 │   ├── db/               # Database access and migrations
 │   ├── telemetry/        # Metrics setup
 │   ├── models/           # Domain models
 │   └── templates/        # Templ templates
 ├── lexicon/              # ATProto lexicon schemas
 ├── k8s/                  # Kubernetes manifests
+├── Makefile              # Build and test targets
 └── Dockerfile
 ```
 

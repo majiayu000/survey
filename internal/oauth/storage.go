@@ -20,10 +20,15 @@ type OAuthRequest struct {
 
 // OAuthSession represents an authenticated user session
 type OAuthSession struct {
-	ID        string
-	DID       string
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	ID             string
+	DID            string
+	AccessToken    string
+	RefreshToken   string
+	DPoPKey        string     // DPoP private key (JWK format)
+	PDSUrl         string     // User's PDS URL for direct writes
+	TokenExpiresAt *time.Time // When the access token expires
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
 }
 
 // Storage provides database operations for OAuth
@@ -102,8 +107,8 @@ func (s *Storage) DeleteOAuthRequest(ctx context.Context, state string) error {
 // CreateSession creates a new OAuth session
 func (s *Storage) CreateSession(ctx context.Context, session OAuthSession) error {
 	query := `
-		INSERT INTO oauth_sessions (id, did, expires_at)
-		VALUES ($1, $2, $3)
+		INSERT INTO oauth_sessions (id, did, access_token, refresh_token, dpop_key, pds_url, token_expires_at, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`
 
 	_, err := s.db.ExecContext(
@@ -111,6 +116,11 @@ func (s *Storage) CreateSession(ctx context.Context, session OAuthSession) error
 		query,
 		session.ID,
 		session.DID,
+		session.AccessToken,
+		session.RefreshToken,
+		session.DPoPKey,
+		session.PDSUrl,
+		session.TokenExpiresAt,
 		session.ExpiresAt,
 	)
 
@@ -124,7 +134,7 @@ func (s *Storage) CreateSession(ctx context.Context, session OAuthSession) error
 // GetSessionByID retrieves a session by its ID
 func (s *Storage) GetSessionByID(ctx context.Context, id string) (*OAuthSession, error) {
 	query := `
-		SELECT id, did, created_at, expires_at
+		SELECT id, did, access_token, refresh_token, dpop_key, pds_url, token_expires_at, created_at, expires_at
 		FROM oauth_sessions
 		WHERE id = $1
 	`
@@ -133,6 +143,11 @@ func (s *Storage) GetSessionByID(ctx context.Context, id string) (*OAuthSession,
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&session.ID,
 		&session.DID,
+		&session.AccessToken,
+		&session.RefreshToken,
+		&session.DPoPKey,
+		&session.PDSUrl,
+		&session.TokenExpiresAt,
 		&session.CreatedAt,
 		&session.ExpiresAt,
 	)
@@ -142,6 +157,31 @@ func (s *Storage) GetSessionByID(ctx context.Context, id string) (*OAuthSession,
 	}
 
 	return session, nil
+}
+
+// UpdateSessionTokens updates the access token, refresh token, and expiration for a session
+func (s *Storage) UpdateSessionTokens(ctx context.Context, id, accessToken, refreshToken string, tokenExpiresAt *time.Time) error {
+	query := `
+		UPDATE oauth_sessions
+		SET access_token = $1, refresh_token = $2, token_expires_at = $3
+		WHERE id = $4
+	`
+
+	result, err := s.db.ExecContext(ctx, query, accessToken, refreshToken, tokenExpiresAt, id)
+	if err != nil {
+		return fmt.Errorf("failed to update session tokens: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 // DeleteSession removes a session by ID

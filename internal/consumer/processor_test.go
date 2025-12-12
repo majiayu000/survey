@@ -703,3 +703,299 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+// TestDeduplication tests that create operations check for existing records
+// This prevents duplicates when we write to PDS first, then local DB
+func TestDeduplication(t *testing.T) {
+	database, queries := setupTestDB(t)
+	defer database.Close()
+
+	processor := NewProcessor(queries)
+	ctx := context.Background()
+
+	t.Run("createSurvey skips when URI already exists", func(t *testing.T) {
+		// Create survey directly in DB (simulating API handler creating it after PDS write)
+		uri := "at://did:plc:author1/net.openmeet.survey/existing123"
+		survey := &models.Survey{
+			ID:        uuid.New(),
+			URI:       stringPtr(uri),
+			CID:       stringPtr("bafy_initial"),
+			AuthorDID: stringPtr("did:plc:author1"),
+			Slug:      "existing-survey",
+			Title:     "Existing Survey",
+			Definition: models.SurveyDefinition{
+				Questions: []models.Question{
+					{
+						ID:       "q1",
+						Text:     "Question 1?",
+						Type:     models.QuestionTypeSingle,
+						Required: true,
+						Options: []models.Option{
+							{ID: "a", Text: "Option A"},
+						},
+					},
+				},
+				Anonymous: false,
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		err := queries.CreateSurvey(ctx, survey)
+		if err != nil {
+			t.Fatalf("Failed to create initial survey: %v", err)
+		}
+
+		// Now firehose sees the same record with potentially newer CID
+		msg := &JetstreamMessage{
+			Kind: "commit",
+			Commit: &JetstreamCommit{
+				Operation:  "create",
+				Repo:       "did:plc:author1",
+				Collection: "net.openmeet.survey",
+				RKey:       "existing123",
+				CID:        "bafy_from_pds",
+				Record: map[string]interface{}{
+					"$type": "net.openmeet.survey",
+					"name":  "Existing Survey",
+					"definition": map[string]interface{}{
+						"questions": []interface{}{
+							map[string]interface{}{
+								"id":       "q1",
+								"text":     "Question 1?",
+								"type":     "net.openmeet.survey#single",
+								"required": true,
+								"options": []interface{}{
+									map[string]interface{}{"id": "a", "text": "Option A"},
+								},
+							},
+						},
+					},
+					"createdAt": time.Now().Format(time.RFC3339),
+				},
+			},
+			TimeUs: 1234567890,
+		}
+
+		// Process should succeed without creating duplicate
+		err = processor.ProcessMessage(ctx, msg)
+		if err != nil {
+			t.Fatalf("ProcessMessage failed: %v", err)
+		}
+
+		// Verify only one survey exists with that URI
+		surveys, err := queries.ListSurveys(ctx, 100, 0)
+		if err != nil {
+			t.Fatalf("Failed to list surveys: %v", err)
+		}
+
+		count := 0
+		var foundSurvey *models.Survey
+		for _, s := range surveys {
+			if s.URI != nil && *s.URI == uri {
+				count++
+				foundSurvey = s
+			}
+		}
+
+		if count != 1 {
+			t.Fatalf("Expected 1 survey with URI %s, got %d", uri, count)
+		}
+
+		// Should have updated the CID
+		if foundSurvey.CID == nil || *foundSurvey.CID != "bafy_from_pds" {
+			t.Errorf("Expected CID to be updated to bafy_from_pds, got: %v", foundSurvey.CID)
+		}
+	})
+
+	t.Run("createResponse skips when URI already exists", func(t *testing.T) {
+		// Create a survey first
+		survey := &models.Survey{
+			ID:        uuid.New(),
+			URI:       stringPtr("at://did:plc:author2/net.openmeet.survey/survey2"),
+			CID:       stringPtr("bafy123"),
+			AuthorDID: stringPtr("did:plc:author2"),
+			Slug:      "test-survey-dedup-2",
+			Title:     "Test Survey",
+			Definition: models.SurveyDefinition{
+				Questions: []models.Question{
+					{
+						ID:       "q1",
+						Text:     "Question?",
+						Type:     models.QuestionTypeSingle,
+						Required: true,
+						Options: []models.Option{
+							{ID: "a", Text: "Option A"},
+						},
+					},
+				},
+				Anonymous: false,
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		err := queries.CreateSurvey(ctx, survey)
+		if err != nil {
+			t.Fatalf("Failed to create survey: %v", err)
+		}
+
+		// Create response directly in DB (simulating API handler creating it after PDS write)
+		responseURI := "at://did:plc:voter1/net.openmeet.survey.response/existing_resp"
+		response := &models.Response{
+			ID:        uuid.New(),
+			SurveyID:  survey.ID,
+			VoterDID:  stringPtr("did:plc:voter1"),
+			RecordURI: stringPtr(responseURI),
+			RecordCID: stringPtr("bafy_initial_response"),
+			Answers: map[string]models.Answer{
+				"q1": {SelectedOptions: []string{"a"}},
+			},
+			CreatedAt: time.Now(),
+		}
+
+		err = queries.CreateResponse(ctx, response)
+		if err != nil {
+			t.Fatalf("Failed to create initial response: %v", err)
+		}
+
+		// Now firehose sees the same response record
+		msg := &JetstreamMessage{
+			Kind: "commit",
+			Commit: &JetstreamCommit{
+				Operation:  "create",
+				Repo:       "did:plc:voter1",
+				Collection: "net.openmeet.survey.response",
+				RKey:       "existing_resp",
+				CID:        "bafy_response_from_pds",
+				Record: map[string]interface{}{
+					"$type": "net.openmeet.survey.response",
+					"subject": map[string]interface{}{
+						"uri": *survey.URI,
+					},
+					"answers": []interface{}{
+						map[string]interface{}{
+							"questionId": "q1",
+							"selected":   []interface{}{"a"},
+						},
+					},
+					"createdAt": time.Now().Format(time.RFC3339),
+				},
+			},
+			TimeUs: 1234567891,
+		}
+
+		// Process should succeed without creating duplicate
+		err = processor.ProcessMessage(ctx, msg)
+		if err != nil {
+			t.Fatalf("ProcessMessage failed: %v", err)
+		}
+
+		// Verify only one response exists with that URI
+		responses, err := queries.ListResponsesBySurvey(ctx, survey.ID)
+		if err != nil {
+			t.Fatalf("Failed to list responses: %v", err)
+		}
+
+		count := 0
+		var foundResponse *models.Response
+		for _, r := range responses {
+			if r.RecordURI != nil && *r.RecordURI == responseURI {
+				count++
+				foundResponse = r
+			}
+		}
+
+		if count != 1 {
+			t.Fatalf("Expected 1 response with URI %s, got %d", responseURI, count)
+		}
+
+		// Should have updated the CID
+		if foundResponse.RecordCID == nil || *foundResponse.RecordCID != "bafy_response_from_pds" {
+			t.Errorf("Expected CID to be updated to bafy_response_from_pds, got: %v", foundResponse.RecordCID)
+		}
+	})
+
+	t.Run("createResults skips when URI already exists", func(t *testing.T) {
+		// Create a survey first
+		survey := &models.Survey{
+			ID:        uuid.New(),
+			URI:       stringPtr("at://did:plc:author3/net.openmeet.survey/survey3"),
+			CID:       stringPtr("bafy456"),
+			AuthorDID: stringPtr("did:plc:author3"),
+			Slug:      "test-survey-dedup-3",
+			Title:     "Test Survey 3",
+			Definition: models.SurveyDefinition{
+				Questions: []models.Question{
+					{
+						ID:       "q1",
+						Text:     "Question?",
+						Type:     models.QuestionTypeSingle,
+						Required: true,
+						Options: []models.Option{
+							{ID: "a", Text: "Option A"},
+						},
+					},
+				},
+				Anonymous: false,
+			},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+
+		err := queries.CreateSurvey(ctx, survey)
+		if err != nil {
+			t.Fatalf("Failed to create survey: %v", err)
+		}
+
+		// Set results URI directly in DB (simulating API handler setting it after PDS write)
+		resultsURI := "at://did:plc:author3/net.openmeet.survey.results/existing_results"
+		err = queries.UpdateSurveyResults(ctx, survey.ID, resultsURI, "bafy_initial_results")
+		if err != nil {
+			t.Fatalf("Failed to update survey results: %v", err)
+		}
+
+		// Now firehose sees the same results record
+		msg := &JetstreamMessage{
+			Kind: "commit",
+			Commit: &JetstreamCommit{
+				Operation:  "create",
+				Repo:       "did:plc:author3",
+				Collection: "net.openmeet.survey.results",
+				RKey:       "existing_results",
+				CID:        "bafy_results_from_pds",
+				Record: map[string]interface{}{
+					"$type": "net.openmeet.survey.results",
+					"subject": map[string]interface{}{
+						"uri": *survey.URI,
+					},
+					"results": map[string]interface{}{
+						"totalResponses": 10,
+					},
+					"createdAt": time.Now().Format(time.RFC3339),
+				},
+			},
+			TimeUs: 1234567892,
+		}
+
+		// Process should succeed without creating duplicate
+		err = processor.ProcessMessage(ctx, msg)
+		if err != nil {
+			t.Fatalf("ProcessMessage failed: %v", err)
+		}
+
+		// Verify the results URI and CID were updated
+		updated, err := queries.GetSurveyByURI(ctx, *survey.URI)
+		if err != nil {
+			t.Fatalf("Failed to get survey: %v", err)
+		}
+
+		if updated.ResultsURI == nil || *updated.ResultsURI != resultsURI {
+			t.Errorf("Expected ResultsURI to be %s, got: %v", resultsURI, updated.ResultsURI)
+		}
+
+		if updated.ResultsCID == nil || *updated.ResultsCID != "bafy_results_from_pds" {
+			t.Errorf("Expected ResultsCID to be updated to bafy_results_from_pds, got: %v", updated.ResultsCID)
+		}
+	})
+}

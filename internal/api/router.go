@@ -50,6 +50,7 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 	// Results
 	web.GET("/surveys/:slug/results", h.GetResultsHTML)
 	web.GET("/surveys/:slug/results-partial", h.GetResultsPartialHTML)
+	web.POST("/surveys/:slug/publish-results", h.PublishResultsHTML)
 
 	// OAuth routes
 	if oh != nil {

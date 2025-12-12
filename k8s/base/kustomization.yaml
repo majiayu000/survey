@@ -6,3 +6,4 @@ resources:
   - deployment-consumer.yaml
   - service.yaml
   - configmap.yaml
+  - job-migrate.yaml

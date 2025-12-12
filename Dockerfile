@@ -17,6 +17,9 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /consumer ./cmd/consumer
 
+# Install golang-migrate for database migrations
+RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
 # Final stage
 FROM alpine:3.20
 
@@ -29,8 +32,9 @@ RUN adduser -D -g '' appuser
 # Copy binaries from builder
 COPY --from=builder /api /usr/local/bin/api
 COPY --from=builder /consumer /usr/local/bin/consumer
+COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
 
-# Copy migrations for potential init container use
+# Copy migrations for database migrations
 COPY --from=builder /app/internal/db/migrations /migrations
 
 # Use non-root user

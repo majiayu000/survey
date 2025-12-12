@@ -130,6 +130,59 @@ func TestOAuthSessionStorage(t *testing.T) {
 		}
 	})
 
+	t.Run("creates and retrieves session with tokens", func(t *testing.T) {
+		tokenExpiresAt := time.Now().Add(1 * time.Hour)
+		session := OAuthSession{
+			ID:             "session-with-tokens",
+			DID:            "did:plc:abc123xyz",
+			AccessToken:    "access-token-123",
+			RefreshToken:   "refresh-token-456",
+			DPoPKey:        `{"kty":"EC","crv":"P-256","x":"test"}`,
+			PDSUrl:         "https://pds.example.com",
+			TokenExpiresAt: &tokenExpiresAt,
+			ExpiresAt:      time.Now().Add(24 * time.Hour),
+		}
+
+		err := storage.CreateSession(ctx, session)
+		if err != nil {
+			t.Fatalf("CreateSession with tokens failed: %v", err)
+		}
+
+		// Retrieve session
+		retrieved, err := storage.GetSessionByID(ctx, "session-with-tokens")
+		if err != nil {
+			t.Fatalf("GetSessionByID failed: %v", err)
+		}
+
+		if retrieved.ID != session.ID {
+			t.Errorf("ID mismatch: got %s, want %s", retrieved.ID, session.ID)
+		}
+		if retrieved.DID != session.DID {
+			t.Errorf("DID mismatch: got %s, want %s", retrieved.DID, session.DID)
+		}
+		if retrieved.AccessToken != session.AccessToken {
+			t.Errorf("AccessToken mismatch: got %s, want %s", retrieved.AccessToken, session.AccessToken)
+		}
+		if retrieved.RefreshToken != session.RefreshToken {
+			t.Errorf("RefreshToken mismatch: got %s, want %s", retrieved.RefreshToken, session.RefreshToken)
+		}
+		if retrieved.DPoPKey != session.DPoPKey {
+			t.Errorf("DPoPKey mismatch: got %s, want %s", retrieved.DPoPKey, session.DPoPKey)
+		}
+		if retrieved.PDSUrl != session.PDSUrl {
+			t.Errorf("PDSUrl mismatch: got %s, want %s", retrieved.PDSUrl, session.PDSUrl)
+		}
+		if retrieved.TokenExpiresAt == nil {
+			t.Error("TokenExpiresAt is nil")
+		} else {
+			// Database truncates to microseconds, so check within 1ms
+			diff := retrieved.TokenExpiresAt.Sub(*session.TokenExpiresAt)
+			if diff < -time.Millisecond || diff > time.Millisecond {
+				t.Errorf("TokenExpiresAt mismatch (diff: %v): got %v, want %v", diff, retrieved.TokenExpiresAt, session.TokenExpiresAt)
+			}
+		}
+	})
+
 	t.Run("returns error for non-existent session", func(t *testing.T) {
 		_, err := storage.GetSessionByID(ctx, "non-existent-session")
 		if err == nil {
@@ -137,6 +190,40 @@ func TestOAuthSessionStorage(t *testing.T) {
 		}
 		if err != sql.ErrNoRows {
 			t.Errorf("Expected sql.ErrNoRows, got %v", err)
+		}
+	})
+
+	t.Run("updates session tokens", func(t *testing.T) {
+		session := OAuthSession{
+			ID:          "update-session-123",
+			DID:         "did:plc:update",
+			AccessToken: "old-token",
+			ExpiresAt:   time.Now().Add(24 * time.Hour),
+		}
+
+		err := storage.CreateSession(ctx, session)
+		if err != nil {
+			t.Fatalf("CreateSession failed: %v", err)
+		}
+
+		// Update tokens
+		newTokenExpiresAt := time.Now().Add(2 * time.Hour)
+		err = storage.UpdateSessionTokens(ctx, "update-session-123", "new-access-token", "new-refresh-token", &newTokenExpiresAt)
+		if err != nil {
+			t.Fatalf("UpdateSessionTokens failed: %v", err)
+		}
+
+		// Retrieve and verify
+		retrieved, err := storage.GetSessionByID(ctx, "update-session-123")
+		if err != nil {
+			t.Fatalf("GetSessionByID failed: %v", err)
+		}
+
+		if retrieved.AccessToken != "new-access-token" {
+			t.Errorf("AccessToken not updated: got %s, want new-access-token", retrieved.AccessToken)
+		}
+		if retrieved.RefreshToken != "new-refresh-token" {
+			t.Errorf("RefreshToken not updated: got %s, want new-refresh-token", retrieved.RefreshToken)
 		}
 	})
 

@@ -29,17 +29,28 @@ type QueriesInterface interface {
 	CreateResponse(ctx context.Context, r *models.Response) error
 	GetResponseBySurveyAndVoter(ctx context.Context, surveyID uuid.UUID, voterDID, voterSession string) (*models.Response, error)
 	GetSurveyResults(ctx context.Context, surveyID uuid.UUID) (*models.SurveyResults, error)
+	UpdateSurveyResults(ctx context.Context, surveyID uuid.UUID, resultsURI, resultsCID string) error
 }
 
 // Handlers holds the HTTP handlers and dependencies
 type Handlers struct {
-	queries QueriesInterface
+	queries      QueriesInterface
+	oauthStorage *oauth.Storage
 }
 
 // NewHandlers creates a new Handlers instance
 func NewHandlers(q QueriesInterface) *Handlers {
 	return &Handlers{
-		queries: q,
+		queries:      q,
+		oauthStorage: nil, // Optional: can be nil if OAuth not configured
+	}
+}
+
+// NewHandlersWithOAuth creates a new Handlers instance with OAuth support
+func NewHandlersWithOAuth(q QueriesInterface, oauthStorage *oauth.Storage) *Handlers {
+	return &Handlers{
+		queries:      q,
+		oauthStorage: oauthStorage,
 	}
 }
 
@@ -479,10 +490,57 @@ func (h *Handlers) CreateSurveyHTML(c echo.Context) error {
 		title = def.Questions[0].Text
 	}
 
-	// Create survey
+	// Check if user is logged in with OAuth
+	var uri *string
+	var cid *string
+	var authorDID *string
+
+	if h.oauthStorage != nil {
+		session, err := oauth.GetSession(c, h.oauthStorage)
+		if err == nil && session != nil && session.AccessToken != "" && session.PDSUrl != "" {
+			// User is logged in - write to PDS first
+			rkey := oauth.GenerateTID()
+
+			// Build AT URI before PDS write (so we can store it locally)
+			atURI := fmt.Sprintf("at://%s/net.openmeet.survey/%s", session.DID, rkey)
+			uri = &atURI
+			authorDID = &session.DID
+
+			// Build ATProto record matching lexicon format
+			record := map[string]interface{}{
+				"$type":     "net.openmeet.survey",
+				"name":      title,
+				"questions": def.Questions,
+				"createdAt": time.Now().Format(time.RFC3339),
+			}
+
+			// Add optional fields if present
+			if def.Anonymous {
+				record["anonymous"] = def.Anonymous
+			}
+
+			// Write to PDS
+			pdsURI, pdsCID, err := oauth.CreateRecord(session, "net.openmeet.survey", rkey, record)
+			if err != nil {
+				// PDS write failed - log but continue with local-only survey
+				c.Logger().Errorf("Failed to write survey to PDS: %v", err)
+				uri = nil
+				authorDID = nil
+			} else {
+				// PDS write succeeded - update with actual CID
+				uri = &pdsURI
+				cid = &pdsCID
+			}
+		}
+	}
+
+	// Create survey locally (either after PDS write or as local-only)
 	now := time.Now()
 	survey := &models.Survey{
 		ID:         uuid.New(),
+		URI:        uri,
+		CID:        cid,
+		AuthorDID:  authorDID,
 		Slug:       slug,
 		Title:      title,
 		Definition: *def,
@@ -551,34 +609,116 @@ func (h *Handlers) SubmitResponseHTML(c echo.Context) error {
 		return component.Render(c.Request().Context(), c.Response().Writer)
 	}
 
-	// Generate voter session
-	ip := getClientIP(c)
-	userAgent := c.Request().UserAgent()
-	voterSession := models.GenerateVoterSession(survey.ID, ip, userAgent)
+	// Initialize response fields
+	var uri *string
+	var cid *string
+	var voterDID *string
+	var voterSession *string
 
-	// Check if already voted
-	existingResponse, err := h.queries.GetResponseBySurveyAndVoter(
-		c.Request().Context(),
-		survey.ID,
-		"",
-		voterSession,
-	)
-	if err != nil {
-		component := templates.Error("Failed to check for existing response")
-		return component.Render(c.Request().Context(), c.Response().Writer)
+	// Check if user is logged in and survey has a URI (ATProto record)
+	// If both conditions are met, write response to user's PDS
+	if h.oauthStorage != nil && survey.URI != nil {
+		session, err := oauth.GetSession(c, h.oauthStorage)
+		if err == nil && session != nil {
+			// Generate TID for response rkey
+			rkey := oauth.GenerateTID()
+			atURI := fmt.Sprintf("at://%s/net.openmeet.survey.response/%s", session.DID, rkey)
+			uri = &atURI
+			voterDID = &session.DID
+
+			// Convert answers map to lexicon format
+			// The lexicon expects an array of {questionId, selectedOptions?, text?}
+			lexiconAnswers := make([]map[string]interface{}, 0, len(answers))
+			for qid, answer := range answers {
+				lexAnswer := map[string]interface{}{
+					"questionId": qid,
+				}
+				if len(answer.SelectedOptions) > 0 {
+					lexAnswer["selectedOptions"] = answer.SelectedOptions
+				}
+				if answer.Text != "" {
+					lexAnswer["text"] = answer.Text
+				}
+				lexiconAnswers = append(lexiconAnswers, lexAnswer)
+			}
+
+			// Build ATProto record matching lexicon format
+			record := map[string]interface{}{
+				"$type": "net.openmeet.survey.response",
+				"subject": map[string]string{
+					"uri": *survey.URI,
+					"cid": *survey.CID,
+				},
+				"answers":   lexiconAnswers,
+				"createdAt": time.Now().Format(time.RFC3339),
+			}
+
+			// Write to PDS
+			pdsURI, pdsCID, err := oauth.CreateRecord(session, "net.openmeet.survey.response", rkey, record)
+			if err != nil {
+				// PDS write failed - log but continue with local-only response
+				c.Logger().Errorf("Failed to write response to PDS: %v", err)
+				uri = nil
+				voterDID = nil
+			} else {
+				// PDS write succeeded - update with actual CID
+				uri = &pdsURI
+				cid = &pdsCID
+			}
+		}
 	}
 
-	if existingResponse != nil {
-		component := templates.Error("You have already submitted a response to this survey")
-		return component.Render(c.Request().Context(), c.Response().Writer)
+	// If not logged in or PDS write failed, fall back to guest voting
+	if voterDID == nil {
+		ip := getClientIP(c)
+		userAgent := c.Request().UserAgent()
+		session := models.GenerateVoterSession(survey.ID, ip, userAgent)
+		voterSession = &session
+
+		// Check if already voted using session
+		existingResponse, err := h.queries.GetResponseBySurveyAndVoter(
+			c.Request().Context(),
+			survey.ID,
+			"",
+			*voterSession,
+		)
+		if err != nil {
+			component := templates.Error("Failed to check for existing response")
+			return component.Render(c.Request().Context(), c.Response().Writer)
+		}
+
+		if existingResponse != nil {
+			component := templates.Error("You have already submitted a response to this survey")
+			return component.Render(c.Request().Context(), c.Response().Writer)
+		}
+	} else {
+		// Check if already voted using DID
+		existingResponse, err := h.queries.GetResponseBySurveyAndVoter(
+			c.Request().Context(),
+			survey.ID,
+			*voterDID,
+			"",
+		)
+		if err != nil {
+			component := templates.Error("Failed to check for existing response")
+			return component.Render(c.Request().Context(), c.Response().Writer)
+		}
+
+		if existingResponse != nil {
+			component := templates.Error("You have already submitted a response to this survey")
+			return component.Render(c.Request().Context(), c.Response().Writer)
+		}
 	}
 
-	// Create response
+	// Create response locally
 	now := time.Now()
 	response := &models.Response{
 		ID:           uuid.New(),
 		SurveyID:     survey.ID,
-		VoterSession: &voterSession,
+		VoterDID:     voterDID,
+		VoterSession: voterSession,
+		RecordURI:    uri,
+		RecordCID:    cid,
 		Answers:      answers,
 		CreatedAt:    now,
 	}
@@ -642,6 +782,104 @@ func (h *Handlers) GetResultsPartialHTML(c echo.Context) error {
 
 	component := templates.ResultsPartial(survey, results)
 	return component.Render(c.Request().Context(), c.Response().Writer)
+}
+
+// PublishResultsHTML publishes survey results to the author's PDS
+// POST /surveys/:slug/publish-results
+func (h *Handlers) PublishResultsHTML(c echo.Context) error {
+	slug := c.Param("slug")
+
+	// Get the survey
+	survey, err := h.queries.GetSurveyBySlug(c.Request().Context(), slug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "Survey not found")
+		}
+		return c.String(http.StatusInternalServerError, "Failed to load survey")
+	}
+
+	// Check if user is logged in
+	if h.oauthStorage == nil {
+		component := templates.Error("You must be logged in to publish results")
+		return component.Render(c.Request().Context(), c.Response().Writer)
+	}
+
+	session, err := oauth.GetSession(c, h.oauthStorage)
+	if err != nil || session == nil {
+		component := templates.Error("You must log in to publish results")
+		return component.Render(c.Request().Context(), c.Response().Writer)
+	}
+
+	// Verify survey has a URI (is an ATProto record)
+	if survey.URI == nil {
+		component := templates.Error("Cannot publish results for local-only surveys. Survey must be an ATProto record.")
+		return component.Render(c.Request().Context(), c.Response().Writer)
+	}
+
+	// Verify user is the survey author
+	if survey.AuthorDID == nil || *survey.AuthorDID != session.DID {
+		component := templates.Error("Only the survey author can publish results")
+		return component.Render(c.Request().Context(), c.Response().Writer)
+	}
+
+	// Get aggregated results from database
+	results, err := h.queries.GetSurveyResults(c.Request().Context(), survey.ID)
+	if err != nil {
+		component := templates.Error("Failed to aggregate results")
+		return component.Render(c.Request().Context(), c.Response().Writer)
+	}
+
+	// Build question results for the lexicon format
+	lexiconQuestionResults := make([]map[string]interface{}, 0, len(results.QuestionResults))
+	for _, qResult := range results.QuestionResults {
+		// Build option counts array
+		optionCounts := make([]map[string]interface{}, 0, len(qResult.OptionCounts))
+		for optionID, count := range qResult.OptionCounts {
+			optionCounts = append(optionCounts, map[string]interface{}{
+				"optionId": optionID,
+				"count":    count,
+			})
+		}
+
+		lexiconQuestionResults = append(lexiconQuestionResults, map[string]interface{}{
+			"questionId":        qResult.QuestionID,
+			"optionCounts":      optionCounts,
+			"textResponseCount": len(qResult.TextAnswers),
+		})
+	}
+
+	// Build ATProto results record matching lexicon format
+	record := map[string]interface{}{
+		"$type": "net.openmeet.survey.results",
+		"subject": map[string]string{
+			"uri": *survey.URI,
+			"cid": *survey.CID,
+		},
+		"totalVotes":      results.TotalVotes,
+		"questionResults": lexiconQuestionResults,
+		"finalizedAt":     time.Now().Format(time.RFC3339),
+	}
+
+	// Generate TID for results rkey
+	rkey := oauth.GenerateTID()
+
+	// Write to PDS
+	resultsURI, resultsCID, err := oauth.CreateRecord(session, "net.openmeet.survey.results", rkey, record)
+	if err != nil {
+		c.Logger().Errorf("Failed to write results to PDS: %v", err)
+		component := templates.Error("Failed to publish results to your PDS")
+		return component.Render(c.Request().Context(), c.Response().Writer)
+	}
+
+	// Update survey with results URI and CID
+	if err := h.queries.UpdateSurveyResults(c.Request().Context(), survey.ID, resultsURI, resultsCID); err != nil {
+		c.Logger().Errorf("Failed to update survey with results: %v", err)
+		component := templates.Error("Failed to save results reference")
+		return component.Render(c.Request().Context(), c.Response().Writer)
+	}
+
+	// Redirect to results page
+	return c.Redirect(http.StatusSeeOther, "/surveys/"+slug+"/results")
 }
 
 // Health Check Handlers

@@ -267,12 +267,32 @@ func (h *Handlers) Callback(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("token exchange failed: %v", err))
 	}
 
-	// Create session with user's DID (from the 'sub' claim)
+	// Resolve PDS URL for the user's DID
+	pdsURL, err := DIDToPDS(tokenResp.Sub)
+	if err != nil {
+		c.Logger().Errorf("Failed to resolve PDS URL for DID %s: %v", tokenResp.Sub, err)
+		// Continue without PDS URL - user can still use the service
+		pdsURL = ""
+	}
+
+	// Calculate token expiration time
+	var tokenExpiresAt *time.Time
+	if tokenResp.ExpiresIn > 0 {
+		expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+		tokenExpiresAt = &expiresAt
+	}
+
+	// Create session with tokens for PDS writes
 	sessionID := GenerateState() // Reuse state generation for session ID
 	session := OAuthSession{
-		ID:        sessionID,
-		DID:       tokenResp.Sub,
-		ExpiresAt: time.Now().Add(24 * time.Hour), // TODO: Use token expiry or make configurable
+		ID:             sessionID,
+		DID:            tokenResp.Sub,
+		AccessToken:    tokenResp.AccessToken,
+		RefreshToken:   tokenResp.RefreshToken,
+		DPoPKey:        oauthReq.DPoPPrivateKey,
+		PDSUrl:         pdsURL,
+		TokenExpiresAt: tokenExpiresAt,
+		ExpiresAt:      time.Now().Add(24 * time.Hour), // Session cookie expiry
 	}
 
 	if err := h.storage.CreateSession(c.Request().Context(), session); err != nil {

@@ -69,3 +69,22 @@ func GetUser(c echo.Context) *User {
 
 	return user
 }
+
+// GetSession retrieves the full OAuth session from the Echo context
+// Returns nil if no session exists
+// This requires the session ID to be stored in context by SessionMiddleware
+func GetSession(c echo.Context, storage *Storage) (*OAuthSession, error) {
+	// Get session cookie
+	cookie, err := c.Cookie("session")
+	if err != nil {
+		return nil, nil // No session cookie
+	}
+
+	// Look up full session in database
+	session, err := storage.GetSessionByID(c.Request().Context(), cookie.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	return session, nil
+}

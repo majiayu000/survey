@@ -85,6 +85,16 @@ func (p *Processor) createSurvey(ctx context.Context, commit *JetstreamCommit) e
 		return fmt.Errorf("create operation missing record")
 	}
 
+	// Construct record URI
+	uri := fmt.Sprintf("at://%s/%s/%s", commit.Repo, commit.Collection, commit.RKey)
+
+	// Check if survey already exists (we may have created it locally after PDS write)
+	existing, err := p.queries.GetSurveyByURI(ctx, uri)
+	if err == nil && existing != nil {
+		// Already exists, just update the CID (treat as update)
+		return p.updateSurvey(ctx, commit)
+	}
+
 	// Parse the survey record
 	def, name, description, err := ParseSurveyRecord(commit.Record)
 	if err != nil {
@@ -118,9 +128,6 @@ func (p *Processor) createSurvey(ctx context.Context, commit *JetstreamCommit) e
 			return fmt.Errorf("too many slug collisions for %s", baseSlug)
 		}
 	}
-
-	// Construct record URI
-	uri := fmt.Sprintf("at://%s/%s/%s", commit.Repo, commit.Collection, commit.RKey)
 
 	// Create the survey
 	survey := &models.Survey{
@@ -250,6 +257,16 @@ func (p *Processor) createResponse(ctx context.Context, commit *JetstreamCommit)
 		return fmt.Errorf("create operation missing record")
 	}
 
+	// Construct record URI
+	recordURI := fmt.Sprintf("at://%s/%s/%s", commit.Repo, commit.Collection, commit.RKey)
+
+	// Check if response already exists (we may have created it locally after PDS write)
+	existing, err := p.queries.GetResponseByRecordURI(ctx, recordURI)
+	if err == nil && existing != nil {
+		// Already exists, just update the CID (treat as update)
+		return p.updateResponse(ctx, commit)
+	}
+
 	// Parse the response record
 	surveyURI, answers, err := ParseResponseRecord(commit.Record)
 	if err != nil {
@@ -273,15 +290,12 @@ func (p *Processor) createResponse(ctx context.Context, commit *JetstreamCommit)
 	// Extract voter DID from commit.repo
 	voterDID := commit.Repo
 
-	// Construct record URI
-	recordURI := fmt.Sprintf("at://%s/%s/%s", commit.Repo, commit.Collection, commit.RKey)
-
 	// Check for duplicate response (user already voted on this survey)
-	existing, err := p.queries.GetResponseBySurveyAndVoter(ctx, survey.ID, voterDID, "")
+	existingVote, err := p.queries.GetResponseBySurveyAndVoter(ctx, survey.ID, voterDID, "")
 	if err != nil {
 		return fmt.Errorf("failed to check for existing response: %w", err)
 	}
-	if existing != nil {
+	if existingVote != nil {
 		// User already voted - this is a duplicate, skip it
 		return nil
 	}
@@ -415,6 +429,16 @@ func (p *Processor) createResults(ctx context.Context, commit *JetstreamCommit) 
 		return fmt.Errorf("create operation missing record")
 	}
 
+	// Construct results record URI
+	resultsURI := fmt.Sprintf("at://%s/%s/%s", commit.Repo, commit.Collection, commit.RKey)
+
+	// Check if results already exist (we may have created them locally after PDS write)
+	existing, err := p.queries.GetSurveyByResultsURI(ctx, resultsURI)
+	if err == nil && existing != nil {
+		// Already exists, just update the CID (treat as update)
+		return p.updateResults(ctx, commit)
+	}
+
 	// Parse the results record to get the survey URI
 	surveyURI, err := ParseResultsRecord(commit.Record)
 	if err != nil {
@@ -434,9 +458,6 @@ func (p *Processor) createResults(ctx context.Context, commit *JetstreamCommit) 
 	if survey.AuthorDID != nil && *survey.AuthorDID != commit.Repo {
 		return fmt.Errorf("unauthorized: DID %s cannot publish results for survey owned by %s", commit.Repo, *survey.AuthorDID)
 	}
-
-	// Construct results record URI
-	resultsURI := fmt.Sprintf("at://%s/%s/%s", commit.Repo, commit.Collection, commit.RKey)
 
 	// Update the survey with results URI/CID
 	if err := p.queries.UpdateSurveyResults(ctx, survey.ID, resultsURI, commit.CID); err != nil {

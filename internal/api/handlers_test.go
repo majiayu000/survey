@@ -5,8 +5,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,6 +91,18 @@ func (m *MockQueries) GetSurveyResults(ctx context.Context, surveyID uuid.UUID) 
 		TotalVotes:      0,
 		QuestionResults: make(map[string]*models.QuestionResult),
 	}, nil
+}
+
+func (m *MockQueries) UpdateSurveyResults(ctx context.Context, surveyID uuid.UUID, resultsURI, resultsCID string) error {
+	// Find and update the survey
+	for _, survey := range m.surveys {
+		if survey.ID == surveyID {
+			survey.ResultsURI = &resultsURI
+			survey.ResultsCID = &resultsCID
+			return nil
+		}
+	}
+	return fmt.Errorf("survey not found")
 }
 
 // Test Helpers
@@ -645,4 +659,173 @@ func TestGetClientIP(t *testing.T) {
 			assert.Equal(t, tt.expected, ip)
 		})
 	}
+}
+
+// RED PHASE: Test response submission WITHOUT OAuth (guest voting)
+func TestSubmitResponseHTML_GuestVoting(t *testing.T) {
+	// Validates that guest voting still works (no PDS write)
+	e, mq, h := setupTest()
+
+	// Create a local-only survey (no URI)
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "guest-survey",
+		Title: "Guest Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Test Question",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options: []models.Option{
+						{ID: "a", Text: "A"},
+						{ID: "b", Text: "B"},
+					},
+				},
+			},
+			Anonymous: false,
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Submit response via HTML form (no OAuth session)
+	form := "q1=a"
+	req := httptest.NewRequest(http.MethodPost, "/surveys/guest-survey/responses", strings.NewReader(form))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationForm)
+	req.RemoteAddr = "192.168.1.1:12345"
+	req.Header.Set("User-Agent", "TestAgent/1.0")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("slug")
+	c.SetParamValues("guest-survey")
+
+	err := h.SubmitResponseHTML(c)
+	require.NoError(t, err)
+
+	// Should redirect or show thank you
+	// Response should be stored with VoterSession, no URI/CID/VoterDID
+	assert.True(t, rec.Code == http.StatusOK || rec.Code == http.StatusSeeOther)
+}
+
+// RED PHASE: Test response with PDS write (user logged in + survey has URI)
+func TestSubmitResponseHTML_WithOAuthAndSurveyURI(t *testing.T) {
+	// When:
+	// 1. User is logged in (has OAuth session)
+	// 2. Survey has a URI (is an ATProto record)
+	// Then:
+	// - Response should be written to user's PDS
+	// - Local response should have RecordURI, RecordCID, and VoterDID
+
+	// This will fail until we implement the PDS write logic in SubmitResponseHTML
+	t.Skip("Will implement after adding PDS write to SubmitResponseHTML handler")
+
+	// Future implementation:
+	// 1. Create mock OAuth session and storage
+	// 2. Create survey with URI (ATProto record)
+	// 3. Set session cookie in request
+	// 4. Mock CreateRecord to return URI and CID
+	// 5. Verify local response has all ATProto fields set
+}
+
+// RED PHASE: Test PublishResultsHTML - User not logged in
+func TestPublishResultsHTML_NotLoggedIn(t *testing.T) {
+	e, mq, h := setupTest()
+
+	// Create a survey
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "test-survey",
+		Title: "Test Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Test Question",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options: []models.Option{
+						{ID: "a", Text: "A"},
+						{ID: "b", Text: "B"},
+					},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	req := httptest.NewRequest(http.MethodPost, "/surveys/test-survey/publish-results", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("slug")
+	c.SetParamValues("test-survey")
+
+	err := h.PublishResultsHTML(c)
+	require.NoError(t, err)
+
+	// Should return error (unauthorized - not logged in)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	// Check for error message in body (case insensitive)
+	body := strings.ToLower(rec.Body.String())
+	assert.True(t, strings.Contains(body, "log") || strings.Contains(body, "error"))
+}
+
+// RED PHASE: Test PublishResultsHTML - Survey not found
+func TestPublishResultsHTML_SurveyNotFound(t *testing.T) {
+	e, _, h := setupTest()
+
+	req := httptest.NewRequest(http.MethodPost, "/surveys/nonexistent/publish-results", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("slug")
+	c.SetParamValues("nonexistent")
+
+	err := h.PublishResultsHTML(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+// RED PHASE: Test PublishResultsHTML - Survey has no URI (local-only)
+func TestPublishResultsHTML_SurveyNoURI(t *testing.T) {
+	e, mq, h := setupTest()
+
+	// Create a local-only survey (no URI)
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "local-survey",
+		Title: "Local Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Test",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	req := httptest.NewRequest(http.MethodPost, "/surveys/local-survey/publish-results", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("slug")
+	c.SetParamValues("local-survey")
+
+	err := h.PublishResultsHTML(c)
+	require.NoError(t, err)
+
+	// Should return error (cannot publish results for local-only survey)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	// The handler checks for login first, so we may get login error or ATProto error
+	body := strings.ToLower(rec.Body.String())
+	assert.True(t, strings.Contains(body, "log") || strings.Contains(body, "atproto") || strings.Contains(body, "error"))
 }

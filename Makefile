@@ -1,6 +1,11 @@
-.PHONY: test test-unit test-e2e test-all
+.PHONY: test test-unit test-e2e test-all migrate migrate-up migrate-down migrate-create migrate-force
 
 GO := /usr/local/go/bin/go
+MIGRATE := $(shell which migrate 2>/dev/null || echo "$(HOME)/go/bin/migrate")
+MIGRATIONS_PATH := internal/db/migrations
+
+# Database URL from environment or construct from individual vars
+DATABASE_URL ?= postgresql://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_NAME)?sslmode=$(DATABASE_SSLMODE)
 
 # Run unit tests only (default)
 test: test-unit
@@ -37,3 +42,39 @@ run-consumer:
 # Clean build artifacts
 clean:
 	rm -rf bin/
+
+# ============================================================================
+# Database Migrations (requires golang-migrate)
+# Install: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+# ============================================================================
+
+# Run all pending migrations
+migrate: migrate-up
+
+# Apply all up migrations
+migrate-up:
+	$(MIGRATE) -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" up
+
+# Rollback the last migration
+migrate-down:
+	$(MIGRATE) -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" down 1
+
+# Rollback all migrations
+migrate-down-all:
+	$(MIGRATE) -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" down -all
+
+# Show current migration version
+migrate-version:
+	$(MIGRATE) -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" version
+
+# Create a new migration (usage: make migrate-create NAME=add_users_table)
+migrate-create:
+	$(MIGRATE) create -ext sql -dir $(MIGRATIONS_PATH) -seq $(NAME)
+
+# Force set migration version (usage: make migrate-force VERSION=3)
+migrate-force:
+	$(MIGRATE) -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" force $(VERSION)
+
+# Migrate to a specific version (usage: make migrate-goto VERSION=2)
+migrate-goto:
+	$(MIGRATE) -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" goto $(VERSION)

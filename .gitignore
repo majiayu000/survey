@@ -20,6 +20,7 @@ go.work
 .env
 .env.local
 .env.*
+.env-*
 
 # IDE
 .vscode/
@@ -33,3 +34,7 @@ Thumbs.db
 
 # Templ generated files
 *_templ.go
+
+# binaries
+api
+consumer

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/openmeet-team/survey/internal/api"
 	"github.com/openmeet-team/survey/internal/db"
+	"github.com/openmeet-team/survey/internal/oauth"
 	"github.com/openmeet-team/survey/internal/telemetry"
 )
 
@@ -51,8 +53,28 @@ func main() {
 	handlers := api.NewHandlers(queries)
 	healthHandlers := api.NewHealthHandlers(database)
 
+	// Create OAuth handlers (optional - requires OAUTH_SECRET_JWK_B64 and SERVER_HOST env vars)
+	var oauthHandlers *oauth.Handlers
+	secretJWKB64 := os.Getenv("OAUTH_SECRET_JWK_B64")
+	host := os.Getenv("SERVER_HOST")
+	if secretJWKB64 != "" && host != "" {
+		// Decode base64 JWK
+		secretJWKBytes, err := base64.StdEncoding.DecodeString(secretJWKB64)
+		if err != nil {
+			log.Fatalf("Failed to decode OAUTH_SECRET_JWK_B64: %v", err)
+		}
+		oauthConfig := oauth.Config{
+			Host:      host,
+			SecretJWK: string(secretJWKBytes),
+		}
+		oauthHandlers = oauth.NewHandlers(database, oauthConfig)
+		log.Println("OAuth handlers initialized")
+	} else {
+		log.Println("OAuth disabled (OAUTH_SECRET_JWK_B64 and SERVER_HOST not configured)")
+	}
+
 	// Setup routes (includes metrics and request ID middleware)
-	api.SetupRoutes(e, handlers, healthHandlers)
+	api.SetupRoutes(e, handlers, healthHandlers, oauthHandlers, database)
 
 	// Start server with graceful shutdown
 	port := os.Getenv("PORT")

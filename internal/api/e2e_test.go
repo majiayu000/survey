@@ -66,7 +66,7 @@ func setupTestServer(t *testing.T) (*echo.Echo, *Handlers, func()) {
 
 	// Setup Echo server
 	e := echo.New()
-	SetupRoutes(e, handlers, NewHealthHandlers(dbConn))
+	SetupRoutes(e, handlers, NewHealthHandlers(dbConn), nil, dbConn)
 
 	cleanup := func() {
 		dbConn.Close()

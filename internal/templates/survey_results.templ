@@ -3,10 +3,11 @@ package templates
 import (
 	"fmt"
 	"github.com/openmeet-team/survey/internal/models"
+	"github.com/openmeet-team/survey/internal/oauth"
 )
 
-templ SurveyResults(survey *models.Survey, results *models.SurveyResults) {
-	@Layout(survey.Title + " - Results") {
+templ SurveyResults(survey *models.Survey, results *models.SurveyResults, user *oauth.User, profile *oauth.Profile) {
+	@Layout(survey.Title + " - Results", user, profile) {
 		<div class="card">
 			<h1>{ survey.Title }</h1>
 			<p style="color: #7f8c8d; margin-bottom: 2rem;">

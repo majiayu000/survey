@@ -1,12 +1,15 @@
 package api
 
 import (
+	"database/sql"
+
 	"github.com/labstack/echo/v4"
+	"github.com/openmeet-team/survey/internal/oauth"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // SetupRoutes configures all API routes
-func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers) {
+func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handlers, db *sql.DB) {
 	// Health check and metrics endpoints (no middleware)
 	e.GET("/health", hh.Health)
 	e.GET("/health/ready", hh.Readiness)
@@ -15,6 +18,10 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers) {
 	// Apply middleware to all other routes
 	e.Use(RequestIDMiddleware())
 	e.Use(MetricsMiddleware())
+
+	// Create session middleware
+	storage := oauth.NewStorage(db)
+	sessionMiddleware := oauth.SessionMiddleware(storage)
 
 	// JSON API routes - v1
 	api := e.Group("/api/v1")
@@ -28,8 +35,8 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers) {
 	api.POST("/surveys/:slug/responses", h.SubmitResponse)
 	api.GET("/surveys/:slug/results", h.GetResults)
 
-	// HTML routes (Templ handlers)
-	web := e.Group("")
+	// HTML routes (Templ handlers) - with session middleware
+	web := e.Group("", sessionMiddleware)
 
 	// Survey list and creation
 	web.GET("/surveys", h.ListSurveysHTML)
@@ -43,6 +50,17 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers) {
 	// Results
 	web.GET("/surveys/:slug/results", h.GetResultsHTML)
 	web.GET("/surveys/:slug/results-partial", h.GetResultsPartialHTML)
+
+	// OAuth routes
+	if oh != nil {
+		oauthGroup := e.Group("/oauth")
+		oauthGroup.GET("/login", oh.LoginPage)
+		oauthGroup.POST("/login", oh.Login)
+		oauthGroup.GET("/callback", oh.Callback)
+		oauthGroup.GET("/client-metadata.json", oh.ClientMetadata)
+		oauthGroup.GET("/jwks.json", oh.JWKS)
+		oauthGroup.POST("/logout", oh.Logout)
+	}
 
 	// Redirect root to surveys list
 	e.GET("/", func(c echo.Context) error {

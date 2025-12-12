@@ -3,10 +3,11 @@ package templates
 import (
 	"fmt"
 	"github.com/openmeet-team/survey/internal/models"
+	"github.com/openmeet-team/survey/internal/oauth"
 )
 
-templ SurveyForm(survey *models.Survey) {
-	@Layout(survey.Title) {
+templ SurveyForm(survey *models.Survey, user *oauth.User, profile *oauth.Profile) {
+	@Layout(survey.Title, user, profile) {
 		<div class="card">
 			<h1>{ survey.Title }</h1>
 			if survey.Description != nil {

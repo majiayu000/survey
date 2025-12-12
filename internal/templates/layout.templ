@@ -1,6 +1,8 @@
 package templates
 
-templ Layout(title string) {
+import "github.com/openmeet-team/survey/internal/oauth"
+
+templ Layout(title string, user *oauth.User, profile *oauth.Profile) {
 	<!DOCTYPE html>
 	<html lang="en">
 	<head>
@@ -55,6 +57,45 @@ templ Layout(title string) {
 			}
 			nav a:hover {
 				color: #3498db;
+			}
+			nav .btn-login {
+				background: #0085ff;
+				padding: 0.5rem 1rem;
+				border-radius: 4px;
+				color: white;
+			}
+			nav .btn-login:hover {
+				background: #0066cc;
+				color: white;
+			}
+			.user-info {
+				display: flex;
+				align-items: center;
+				gap: 0.75rem;
+			}
+			.user-avatar {
+				width: 32px;
+				height: 32px;
+				border-radius: 50%;
+				object-fit: cover;
+			}
+			.user-handle {
+				color: #ecf0f1;
+				font-size: 0.9rem;
+			}
+			.btn-logout {
+				background: transparent;
+				border: 1px solid #ecf0f1;
+				padding: 0.25rem 0.75rem;
+				border-radius: 4px;
+				color: #ecf0f1;
+				font-size: 0.85rem;
+				cursor: pointer;
+				text-decoration: none;
+			}
+			.btn-logout:hover {
+				background: #ecf0f1;
+				color: #2c3e50;
 			}
 			main {
 				min-height: calc(100vh - 200px);
@@ -131,6 +172,27 @@ templ Layout(title string) {
 				<ul>
 					<li><a href="/surveys">All Surveys</a></li>
 					<li><a href="/surveys/new">Create Survey</a></li>
+					if user != nil && profile != nil {
+						<li>
+							<div class="user-info">
+								if profile.Avatar != "" {
+									<img src={ profile.Avatar } alt={ profile.Handle } class="user-avatar"/>
+								}
+								<span class="user-handle">
+									if profile.DisplayName != "" {
+										{ profile.DisplayName }
+									} else {
+										{ profile.Handle }
+									}
+								</span>
+								<form action="/oauth/logout" method="post" style="margin: 0;">
+									<button type="submit" class="btn-logout">Logout</button>
+								</form>
+							</div>
+						</li>
+					} else {
+						<li><a href="/oauth/login" class="btn-login">Login with Bluesky</a></li>
+					}
 				</ul>
 			</div>
 		</nav>

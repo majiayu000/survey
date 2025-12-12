@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/openmeet-team/survey/internal/models"
+	"github.com/openmeet-team/survey/internal/oauth"
 	"github.com/openmeet-team/survey/internal/telemetry"
 	"github.com/openmeet-team/survey/internal/templates"
 )
@@ -388,8 +389,11 @@ func (h *Handlers) ListSurveysHTML(c echo.Context) error {
 		}
 	}
 
+	// Get user and profile from context
+	user, profile := getUserAndProfile(c)
+
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.SurveyList(surveys, counts)
+	component := templates.SurveyList(surveys, counts, user, profile)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -406,16 +410,22 @@ func (h *Handlers) GetSurveyHTML(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, "Failed to load survey")
 	}
 
+	// Get user and profile from context
+	user, profile := getUserAndProfile(c)
+
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.SurveyForm(survey)
+	component := templates.SurveyForm(survey, user, profile)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
 // CreateSurveyPageHTML renders the create survey form
 // GET /surveys/new
 func (h *Handlers) CreateSurveyPageHTML(c echo.Context) error {
+	// Get user and profile from context
+	user, profile := getUserAndProfile(c)
+
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.CreateSurvey()
+	component := templates.CreateSurvey(user, profile)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -604,8 +614,11 @@ func (h *Handlers) GetResultsHTML(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, "Failed to load results")
 	}
 
+	// Get user and profile from context
+	user, profile := getUserAndProfile(c)
+
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.SurveyResults(survey, results)
+	component := templates.SurveyResults(survey, results, user, profile)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -699,4 +712,23 @@ func (hh *HealthHandlers) Readiness(c echo.Context) error {
 		Service: "survey-api",
 		Checks:  checks,
 	})
+}
+
+// getUserAndProfile retrieves the authenticated user from context and fetches their profile
+// Returns nil for both if user is not authenticated
+func getUserAndProfile(c echo.Context) (*oauth.User, *oauth.Profile) {
+	user := oauth.GetUser(c)
+	if user == nil {
+		return nil, nil
+	}
+
+	// Fetch profile from Bluesky
+	profile, err := oauth.GetProfile(user.DID)
+	if err != nil {
+		// Log error but don't fail - just show user without profile
+		c.Logger().Errorf("Failed to fetch profile for %s: %v", user.DID, err)
+		return user, nil
+	}
+
+	return user, profile
 }

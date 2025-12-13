@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -991,4 +992,212 @@ func (h *Handlers) LandingPage(c echo.Context) error {
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
 	component := templates.LandingPage(stats, user, profile)
 	return component.Render(c.Request().Context(), c.Response().Writer)
+}
+
+// MyDataHTML displays the overview of user's PDS data
+// GET /my-data
+func (h *Handlers) MyDataHTML(c echo.Context) error {
+	// Check authentication
+	user := oauth.GetUser(c)
+	if user == nil {
+		return c.String(http.StatusUnauthorized, "Authentication required")
+	}
+
+	// Get profile
+	_, profile := getUserAndProfile(c)
+
+	// Render overview page
+	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
+	component := templates.MyDataPage(user, profile)
+	return component.Render(c.Request().Context(), c.Response().Writer)
+}
+
+// MyDataCollectionHTML displays records from a specific collection
+// GET /my-data/:collection
+func (h *Handlers) MyDataCollectionHTML(c echo.Context) error {
+	// Check authentication
+	user := oauth.GetUser(c)
+	if user == nil {
+		return c.String(http.StatusUnauthorized, "Authentication required")
+	}
+
+	// Get session to access PDS URL
+	if h.oauthStorage == nil {
+		return c.String(http.StatusInternalServerError, "OAuth not configured")
+	}
+
+	session, err := oauth.GetSession(c, h.oauthStorage)
+	if err != nil {
+		c.Logger().Errorf("Failed to get session: %v", err)
+		return c.String(http.StatusInternalServerError, "Failed to get session")
+	}
+	if session == nil {
+		return c.String(http.StatusUnauthorized, "Session not found")
+	}
+
+	// Get parameters
+	collection := c.Param("collection")
+	cursor := c.QueryParam("cursor")
+	limit := 50
+
+	// Fetch records from PDS
+	records, err := oauth.ListRecords(session.PDSUrl, session.DID, collection, cursor, limit)
+	if err != nil {
+		c.Logger().Errorf("Failed to list records from %s: %v", collection, err)
+		return c.String(http.StatusInternalServerError, "Failed to fetch records: "+err.Error())
+	}
+
+	// Get profile
+	_, profile := getUserAndProfile(c)
+
+	// Render collection page
+	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
+	component := templates.MyDataCollectionPage(user, profile, collection, records.Records, records.Cursor)
+	return component.Render(c.Request().Context(), c.Response().Writer)
+}
+
+// MyDataRecordHTML displays a single record for editing
+// GET /my-data/:collection/:rkey
+func (h *Handlers) MyDataRecordHTML(c echo.Context) error {
+	// Check authentication
+	user := oauth.GetUser(c)
+	if user == nil {
+		return c.String(http.StatusUnauthorized, "Authentication required")
+	}
+
+	// Get session to access PDS URL
+	if h.oauthStorage == nil {
+		return c.String(http.StatusInternalServerError, "OAuth not configured")
+	}
+
+	session, err := oauth.GetSession(c, h.oauthStorage)
+	if err != nil {
+		c.Logger().Errorf("Failed to get session: %v", err)
+		return c.String(http.StatusInternalServerError, "Failed to get session")
+	}
+	if session == nil {
+		return c.String(http.StatusUnauthorized, "Session not found")
+	}
+
+	// Get parameters
+	collection := c.Param("collection")
+	rkey := c.Param("rkey")
+
+	// Fetch all records to find the specific one
+	// (ATProto doesn't have a getRecord endpoint for public repos)
+	records, err := oauth.ListRecords(session.PDSUrl, session.DID, collection, "", 100)
+	if err != nil {
+		c.Logger().Errorf("Failed to list records from %s: %v", collection, err)
+		return c.String(http.StatusInternalServerError, "Failed to fetch records: "+err.Error())
+	}
+
+	// Find the specific record
+	var record *oauth.PDSRecord
+	for i := range records.Records {
+		if records.Records[i].RKey == rkey {
+			record = &records.Records[i]
+			break
+		}
+	}
+
+	if record == nil {
+		return c.String(http.StatusNotFound, "Record not found")
+	}
+
+	// Get profile
+	_, profile := getUserAndProfile(c)
+
+	// Render record edit page
+	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
+	component := templates.MyDataRecordPage(user, profile, collection, record)
+	return component.Render(c.Request().Context(), c.Response().Writer)
+}
+
+// UpdateRecordHTML updates a record via form submission
+// POST /my-data/:collection/:rkey
+func (h *Handlers) UpdateRecordHTML(c echo.Context) error {
+	// Check authentication
+	user := oauth.GetUser(c)
+	if user == nil {
+		return c.String(http.StatusUnauthorized, "Authentication required")
+	}
+
+	// Get session
+	if h.oauthStorage == nil {
+		return c.String(http.StatusInternalServerError, "OAuth not configured")
+	}
+
+	session, err := oauth.GetSession(c, h.oauthStorage)
+	if err != nil {
+		c.Logger().Errorf("Failed to get session: %v", err)
+		return c.String(http.StatusInternalServerError, "Failed to get session")
+	}
+	if session == nil {
+		return c.String(http.StatusUnauthorized, "Session not found")
+	}
+
+	// Get parameters
+	collection := c.Param("collection")
+	rkey := c.Param("rkey")
+	recordJSON := c.FormValue("record")
+
+	// Parse JSON
+	var recordData map[string]interface{}
+	if err := json.Unmarshal([]byte(recordJSON), &recordData); err != nil {
+		return c.String(http.StatusBadRequest, "Invalid JSON: "+err.Error())
+	}
+
+	// Update record on PDS
+	_, _, err = oauth.UpdateRecord(session, collection, rkey, recordData)
+	if err != nil {
+		c.Logger().Errorf("Failed to update record %s/%s: %v", collection, rkey, err)
+		return c.String(http.StatusInternalServerError, "Failed to update record: "+err.Error())
+	}
+
+	// Redirect back to collection view
+	return c.Redirect(http.StatusSeeOther, "/my-data/"+collection)
+}
+
+// DeleteRecordsHTML deletes multiple records via form submission
+// POST /my-data/delete
+func (h *Handlers) DeleteRecordsHTML(c echo.Context) error {
+	// Check authentication
+	user := oauth.GetUser(c)
+	if user == nil {
+		return c.String(http.StatusUnauthorized, "Authentication required")
+	}
+
+	// Get session
+	if h.oauthStorage == nil {
+		return c.String(http.StatusInternalServerError, "OAuth not configured")
+	}
+
+	session, err := oauth.GetSession(c, h.oauthStorage)
+	if err != nil {
+		c.Logger().Errorf("Failed to get session: %v", err)
+		return c.String(http.StatusInternalServerError, "Failed to get session")
+	}
+	if session == nil {
+		return c.String(http.StatusUnauthorized, "Session not found")
+	}
+
+	// Get parameters
+	collection := c.FormValue("collection")
+	rkeys := c.Request().Form["rkeys"]
+
+	if len(rkeys) == 0 {
+		return c.String(http.StatusBadRequest, "No records selected")
+	}
+
+	// Delete each record
+	for _, rkey := range rkeys {
+		err := oauth.DeleteRecord(session, collection, rkey)
+		if err != nil {
+			// Continue with other deletions even if one fails
+			c.Logger().Errorf("Failed to delete record %s/%s: %v", collection, rkey, err)
+		}
+	}
+
+	// Redirect back to collection view
+	return c.Redirect(http.StatusSeeOther, "/my-data/"+collection)
 }

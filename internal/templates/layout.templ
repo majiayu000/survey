@@ -173,6 +173,9 @@ templ Layout(title string, user *oauth.User, profile *oauth.Profile) {
 					<li><a href="/surveys">All Surveys</a></li>
 					<li><a href="/surveys/new">Create Survey</a></li>
 					if user != nil && profile != nil {
+						<li><a href="/my-data">My Data</a></li>
+					}
+					if user != nil && profile != nil {
 						<li>
 							<div class="user-info">
 								if profile.Avatar != "" {

@@ -54,6 +54,13 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 	web.GET("/surveys/:slug/results-partial", h.GetResultsPartialHTML)
 	web.POST("/surveys/:slug/publish-results", h.PublishResultsHTML)
 
+	// My Data routes (requires login)
+	web.GET("/my-data", h.MyDataHTML)
+	web.GET("/my-data/:collection", h.MyDataCollectionHTML)
+	web.GET("/my-data/:collection/:rkey", h.MyDataRecordHTML)
+	web.POST("/my-data/:collection/:rkey", h.UpdateRecordHTML)
+	web.POST("/my-data/delete", h.DeleteRecordsHTML)
+
 	// OAuth routes
 	if oh != nil {
 		oauthGroup := e.Group("/oauth")

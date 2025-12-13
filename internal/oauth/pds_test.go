@@ -259,3 +259,212 @@ func TestRefreshToken(t *testing.T) {
 		}
 	})
 }
+
+// TestListRecords tests fetching records from a collection
+func TestListRecords(t *testing.T) {
+	t.Run("lists records without auth", func(t *testing.T) {
+		// Mock PDS server
+		pdsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Verify URL path
+			if r.URL.Path != "/xrpc/com.atproto.repo.listRecords" {
+				t.Errorf("Expected path /xrpc/com.atproto.repo.listRecords, got %s", r.URL.Path)
+			}
+
+			// Verify query parameters
+			repo := r.URL.Query().Get("repo")
+			collection := r.URL.Query().Get("collection")
+			if repo != "did:plc:test123" {
+				t.Errorf("Expected repo=did:plc:test123, got %s", repo)
+			}
+			if collection != "net.openmeet.survey" {
+				t.Errorf("Expected collection=net.openmeet.survey, got %s", collection)
+			}
+
+			// Return success response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{
+				"records": [
+					{
+						"uri": "at://did:plc:test123/net.openmeet.survey/abc123",
+						"cid": "bafytest1",
+						"value": {"question": "Test?"}
+					},
+					{
+						"uri": "at://did:plc:test123/net.openmeet.survey/def456",
+						"cid": "bafytest2",
+						"value": {"question": "Another?"}
+					}
+				],
+				"cursor": "next-page"
+			}`))
+		}))
+		defer pdsServer.Close()
+
+		resp, err := ListRecords(pdsServer.URL, "did:plc:test123", "net.openmeet.survey", "", 50)
+		if err != nil {
+			t.Fatalf("ListRecords failed: %v", err)
+		}
+
+		if len(resp.Records) != 2 {
+			t.Errorf("Expected 2 records, got %d", len(resp.Records))
+		}
+
+		if resp.Cursor != "next-page" {
+			t.Errorf("Expected cursor 'next-page', got %s", resp.Cursor)
+		}
+
+		// Check first record
+		if resp.Records[0].URI != "at://did:plc:test123/net.openmeet.survey/abc123" {
+			t.Errorf("Unexpected URI: %s", resp.Records[0].URI)
+		}
+		if resp.Records[0].RKey != "abc123" {
+			t.Errorf("Expected rkey 'abc123', got %s", resp.Records[0].RKey)
+		}
+	})
+
+	t.Run("returns error for invalid PDS URL", func(t *testing.T) {
+		_, err := ListRecords("", "did:plc:test", "net.openmeet.survey", "", 50)
+		if err == nil {
+			t.Error("Expected error for empty PDS URL")
+		}
+	})
+}
+
+// TestDeleteRecord tests deleting a single record
+func TestDeleteRecord(t *testing.T) {
+	t.Run("deletes record with valid session", func(t *testing.T) {
+		// Mock PDS server
+		pdsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Verify request has proper headers
+			if r.Header.Get("Authorization") == "" {
+				t.Error("Expected Authorization header")
+			}
+			if r.Header.Get("DPoP") == "" {
+				t.Error("Expected DPoP header")
+			}
+
+			// Verify URL path
+			if r.URL.Path != "/xrpc/com.atproto.repo.deleteRecord" {
+				t.Errorf("Expected path /xrpc/com.atproto.repo.deleteRecord, got %s", r.URL.Path)
+			}
+
+			// Read and verify payload
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]interface{}
+			json.Unmarshal(body, &payload)
+
+			if payload["repo"] != "did:plc:test123" {
+				t.Errorf("Expected repo=did:plc:test123, got %v", payload["repo"])
+			}
+			if payload["collection"] != "net.openmeet.survey" {
+				t.Errorf("Expected collection=net.openmeet.survey, got %v", payload["collection"])
+			}
+			if payload["rkey"] != "abc123" {
+				t.Errorf("Expected rkey=abc123, got %v", payload["rkey"])
+			}
+
+			// Return success response
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer pdsServer.Close()
+
+		tokenExpiresAt := time.Now().Add(1 * time.Hour)
+		session := &OAuthSession{
+			ID:             "test-session",
+			DID:            "did:plc:test123",
+			AccessToken:    "test-access-token",
+			DPoPKey:        GenerateSecretJWK(),
+			PDSUrl:         pdsServer.URL,
+			TokenExpiresAt: &tokenExpiresAt,
+		}
+
+		err := DeleteRecord(session, "net.openmeet.survey", "abc123")
+		if err != nil {
+			t.Fatalf("DeleteRecord failed: %v", err)
+		}
+	})
+
+	t.Run("returns error for nil session", func(t *testing.T) {
+		err := DeleteRecord(nil, "net.openmeet.survey", "abc123")
+		if err == nil {
+			t.Error("Expected error for nil session")
+		}
+	})
+}
+
+// TestUpdateRecord tests updating an existing record
+func TestUpdateRecord(t *testing.T) {
+	t.Run("updates record with valid session", func(t *testing.T) {
+		// Mock PDS server
+		pdsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Verify request has proper headers
+			if r.Header.Get("Authorization") == "" {
+				t.Error("Expected Authorization header")
+			}
+			if r.Header.Get("DPoP") == "" {
+				t.Error("Expected DPoP header")
+			}
+
+			// Verify URL path
+			if r.URL.Path != "/xrpc/com.atproto.repo.putRecord" {
+				t.Errorf("Expected path /xrpc/com.atproto.repo.putRecord, got %s", r.URL.Path)
+			}
+
+			// Read and verify payload
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]interface{}
+			json.Unmarshal(body, &payload)
+
+			if payload["repo"] != "did:plc:test123" {
+				t.Errorf("Expected repo=did:plc:test123, got %v", payload["repo"])
+			}
+			if payload["collection"] != "net.openmeet.survey" {
+				t.Errorf("Expected collection=net.openmeet.survey, got %v", payload["collection"])
+			}
+			if payload["rkey"] != "abc123" {
+				t.Errorf("Expected rkey=abc123, got %v", payload["rkey"])
+			}
+
+			// Return success response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"uri":"at://did:plc:test123/net.openmeet.survey/abc123","cid":"bafynewcid"}`))
+		}))
+		defer pdsServer.Close()
+
+		tokenExpiresAt := time.Now().Add(1 * time.Hour)
+		session := &OAuthSession{
+			ID:             "test-session",
+			DID:            "did:plc:test123",
+			AccessToken:    "test-access-token",
+			DPoPKey:        GenerateSecretJWK(),
+			PDSUrl:         pdsServer.URL,
+			TokenExpiresAt: &tokenExpiresAt,
+		}
+
+		record := map[string]interface{}{
+			"question": "Updated question?",
+		}
+
+		uri, cid, err := UpdateRecord(session, "net.openmeet.survey", "abc123", record)
+		if err != nil {
+			t.Fatalf("UpdateRecord failed: %v", err)
+		}
+
+		if uri != "at://did:plc:test123/net.openmeet.survey/abc123" {
+			t.Errorf("Unexpected URI: %s", uri)
+		}
+		if cid != "bafynewcid" {
+			t.Errorf("Unexpected CID: %s", cid)
+		}
+	})
+
+	t.Run("returns error for nil session", func(t *testing.T) {
+		record := map[string]interface{}{"test": "data"}
+		_, _, err := UpdateRecord(nil, "net.openmeet.survey", "abc123", record)
+		if err == nil {
+			t.Error("Expected error for nil session")
+		}
+	})
+}

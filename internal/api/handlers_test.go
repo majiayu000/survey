@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/openmeet-team/survey/internal/models"
+	"github.com/openmeet-team/survey/internal/oauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -987,4 +988,81 @@ func TestLandingPageHTML_Success(t *testing.T) {
 	assert.Contains(t, body, "1", "Should show survey count")
 	assert.Contains(t, body, "Create Survey", "Should have CTA button")
 	assert.Contains(t, body, "Browse Surveys", "Should have browse button")
+}
+
+// RED PHASE: Test MyData handlers require authentication
+func TestMyDataHTML_RequiresAuth(t *testing.T) {
+	e, _, h := setupTest()
+
+	req := httptest.NewRequest(http.MethodGet, "/my-data", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.MyDataHTML(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+// RED PHASE: Test MyData shows overview when authenticated
+func TestMyDataHTML_ShowsOverview(t *testing.T) {
+	e, _, h := setupTest()
+
+	// Set authenticated user in context
+	req := httptest.NewRequest(http.MethodGet, "/my-data", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set("user", &oauth.User{DID: "did:plc:test123"})
+
+	err := h.MyDataHTML(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	assert.Contains(t, body, "My Data", "Should contain page title")
+	assert.Contains(t, body, "net.openmeet.survey", "Should show survey collection")
+}
+
+// RED PHASE: Test MyDataCollection requires auth
+func TestMyDataCollectionHTML_RequiresAuth(t *testing.T) {
+	e, _, h := setupTest()
+
+	req := httptest.NewRequest(http.MethodGet, "/my-data/net.openmeet.survey", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/my-data/:collection")
+	c.SetParamNames("collection")
+	c.SetParamValues("net.openmeet.survey")
+
+	err := h.MyDataCollectionHTML(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+// RED PHASE: Test MyDataRecord requires auth
+func TestMyDataRecordHTML_RequiresAuth(t *testing.T) {
+	e, _, h := setupTest()
+
+	req := httptest.NewRequest(http.MethodGet, "/my-data/net.openmeet.survey/abc123", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/my-data/:collection/:rkey")
+	c.SetParamNames("collection", "rkey")
+	c.SetParamValues("net.openmeet.survey", "abc123")
+
+	err := h.MyDataRecordHTML(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+// RED PHASE: Test DeleteRecords requires auth
+func TestDeleteRecordsHTML_RequiresAuth(t *testing.T) {
+	e, _, h := setupTest()
+
+	req := httptest.NewRequest(http.MethodPost, "/my-data/delete", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.DeleteRecordsHTML(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }

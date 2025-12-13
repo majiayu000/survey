@@ -25,53 +25,56 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 	storage := oauth.NewStorage(db)
 	sessionMiddleware := oauth.SessionMiddleware(storage)
 
+	// Create rate limiters
+	rateLimiters := NewRateLimiterConfig()
+
 	// JSON API routes - v1
 	api := e.Group("/api/v1")
 
-	// Survey management
-	api.POST("/surveys", h.CreateSurvey)
-	api.GET("/surveys", h.ListSurveys)
-	api.GET("/surveys/:slug", h.GetSurvey)
+	// Survey management with rate limiting
+	api.POST("/surveys", h.CreateSurvey, rateLimiters.SurveyCreation.Middleware())
+	api.GET("/surveys", h.ListSurveys, rateLimiters.GeneralAPI.Middleware())
+	api.GET("/surveys/:slug", h.GetSurvey, rateLimiters.GeneralAPI.Middleware())
 
-	// Response submission and results
-	api.POST("/surveys/:slug/responses", h.SubmitResponse)
-	api.GET("/surveys/:slug/results", h.GetResults)
+	// Response submission and results with rate limiting
+	api.POST("/surveys/:slug/responses", h.SubmitResponse, rateLimiters.VoteSubmission.Middleware())
+	api.GET("/surveys/:slug/results", h.GetResults, rateLimiters.GeneralAPI.Middleware())
 
 	// HTML routes (Templ handlers) - with session middleware
 	web := e.Group("", sessionMiddleware)
 
-	// Survey list and creation
-	web.GET("/surveys", h.ListSurveysHTML)
-	web.GET("/surveys/new", h.CreateSurveyPageHTML)
-	web.POST("/surveys", h.CreateSurveyHTML)
+	// Survey list and creation with rate limiting
+	web.GET("/surveys", h.ListSurveysHTML, rateLimiters.GeneralAPI.Middleware())
+	web.GET("/surveys/new", h.CreateSurveyPageHTML, rateLimiters.GeneralAPI.Middleware())
+	web.POST("/surveys", h.CreateSurveyHTML, rateLimiters.SurveyCreation.Middleware())
 
-	// Survey viewing and voting
-	web.GET("/surveys/:slug", h.GetSurveyHTML)
-	web.POST("/surveys/:slug/responses", h.SubmitResponseHTML)
+	// Survey viewing and voting with rate limiting
+	web.GET("/surveys/:slug", h.GetSurveyHTML, rateLimiters.GeneralAPI.Middleware())
+	web.POST("/surveys/:slug/responses", h.SubmitResponseHTML, rateLimiters.VoteSubmission.Middleware())
 
-	// Results
-	web.GET("/surveys/:slug/results", h.GetResultsHTML)
-	web.GET("/surveys/:slug/results-partial", h.GetResultsPartialHTML)
-	web.POST("/surveys/:slug/publish-results", h.PublishResultsHTML)
+	// Results with rate limiting
+	web.GET("/surveys/:slug/results", h.GetResultsHTML, rateLimiters.GeneralAPI.Middleware())
+	web.GET("/surveys/:slug/results-partial", h.GetResultsPartialHTML, rateLimiters.GeneralAPI.Middleware())
+	web.POST("/surveys/:slug/publish-results", h.PublishResultsHTML, rateLimiters.GeneralAPI.Middleware())
 
-	// My Data routes (requires login)
-	web.GET("/my-data", h.MyDataHTML)
-	web.GET("/my-data/:collection", h.MyDataCollectionHTML)
-	web.GET("/my-data/:collection/:rkey", h.MyDataRecordHTML)
-	web.POST("/my-data/:collection/:rkey", h.UpdateRecordHTML)
-	web.POST("/my-data/delete", h.DeleteRecordsHTML)
+	// My Data routes (requires login) with rate limiting
+	web.GET("/my-data", h.MyDataHTML, rateLimiters.GeneralAPI.Middleware())
+	web.GET("/my-data/:collection", h.MyDataCollectionHTML, rateLimiters.GeneralAPI.Middleware())
+	web.GET("/my-data/:collection/:rkey", h.MyDataRecordHTML, rateLimiters.GeneralAPI.Middleware())
+	web.POST("/my-data/:collection/:rkey", h.UpdateRecordHTML, rateLimiters.GeneralAPI.Middleware())
+	web.POST("/my-data/delete", h.DeleteRecordsHTML, rateLimiters.GeneralAPI.Middleware())
 
-	// OAuth routes
+	// OAuth routes with rate limiting
 	if oh != nil {
 		oauthGroup := e.Group("/oauth")
-		oauthGroup.GET("/login", oh.LoginPage)
-		oauthGroup.POST("/login", oh.Login)
-		oauthGroup.GET("/callback", oh.Callback)
-		oauthGroup.GET("/client-metadata.json", oh.ClientMetadata)
-		oauthGroup.GET("/jwks.json", oh.JWKS)
-		oauthGroup.POST("/logout", oh.Logout)
+		oauthGroup.GET("/login", oh.LoginPage, rateLimiters.OAuth.Middleware())
+		oauthGroup.POST("/login", oh.Login, rateLimiters.OAuth.Middleware())
+		oauthGroup.GET("/callback", oh.Callback, rateLimiters.OAuth.Middleware())
+		oauthGroup.GET("/client-metadata.json", oh.ClientMetadata, rateLimiters.OAuth.Middleware())
+		oauthGroup.GET("/jwks.json", oh.JWKS, rateLimiters.OAuth.Middleware())
+		oauthGroup.POST("/logout", oh.Logout, rateLimiters.OAuth.Middleware())
 	}
 
 	// Landing page with statistics
-	web.GET("/", h.LandingPage)
+	web.GET("/", h.LandingPage, rateLimiters.GeneralAPI.Middleware())
 }

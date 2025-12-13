@@ -16,6 +16,7 @@ type PDSRecord struct {
 	URI       string                 `json:"uri"`
 	CID       string                 `json:"cid"`
 	Value     map[string]interface{} `json:"value"`
+	ValueJSON string                 `json:"-"` // formatted JSON for display
 	RKey      string                 `json:"rkey"`      // extracted from URI
 	Timestamp *time.Time             `json:"timestamp"` // parsed from TID if valid
 }
@@ -328,11 +329,15 @@ func ListRecords(pdsURL, did, collection string, cursor string, limit int) (*Lis
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Extract rkey from URI for each record
+	// Extract rkey from URI and format JSON for each record
 	for i := range result.Records {
 		parts := strings.Split(result.Records[i].URI, "/")
 		if len(parts) > 0 {
 			result.Records[i].RKey = parts[len(parts)-1]
+		}
+		// Format Value as indented JSON for display
+		if jsonBytes, err := json.MarshalIndent(result.Records[i].Value, "", "  "); err == nil {
+			result.Records[i].ValueJSON = string(jsonBytes)
 		}
 	}
 

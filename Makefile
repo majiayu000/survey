@@ -1,6 +1,7 @@
-.PHONY: test test-unit test-e2e test-all migrate migrate-up migrate-down migrate-create migrate-force
+.PHONY: test test-unit test-e2e test-all migrate migrate-up migrate-down migrate-create migrate-force templ
 
 GO := /usr/local/go/bin/go
+TEMPL := $(shell which templ 2>/dev/null || echo "$(HOME)/go/bin/templ")
 MIGRATE := $(shell which migrate 2>/dev/null || echo "$(HOME)/go/bin/migrate")
 MIGRATIONS_PATH := internal/db/migrations
 
@@ -23,8 +24,12 @@ test-all:
 	$(GO) test -v ./...
 	$(GO) test -v -tags=e2e ./internal/api/e2e_test.go ./internal/api/handlers.go ./internal/api/dto.go ./internal/api/middleware.go ./internal/api/router.go -timeout=5m
 
+# Generate templ templates
+templ:
+	$(TEMPL) generate
+
 # Build the API server
-build:
+build: templ
 	$(GO) build -o bin/survey-api ./cmd/api
 
 # Build the consumer

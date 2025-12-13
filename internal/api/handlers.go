@@ -30,6 +30,7 @@ type QueriesInterface interface {
 	GetResponseBySurveyAndVoter(ctx context.Context, surveyID uuid.UUID, voterDID, voterSession string) (*models.Response, error)
 	GetSurveyResults(ctx context.Context, surveyID uuid.UUID) (*models.SurveyResults, error)
 	UpdateSurveyResults(ctx context.Context, surveyID uuid.UUID, resultsURI, resultsCID string) error
+	GetStats(ctx context.Context) (*models.Stats, error)
 }
 
 // Handlers holds the HTTP handlers and dependencies
@@ -973,4 +974,21 @@ func getUserAndProfile(c echo.Context) (*oauth.User, *oauth.Profile) {
 	}
 
 	return user, profile
+}
+
+// LandingPage renders the landing page with live statistics
+// GET /
+func (h *Handlers) LandingPage(c echo.Context) error {
+	// Get statistics
+	stats, err := h.queries.GetStats(c.Request().Context())
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to load statistics")
+	}
+
+	// Get user and profile from context
+	user, profile := getUserAndProfile(c)
+
+	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
+	component := templates.LandingPage(stats, user, profile)
+	return component.Render(c.Request().Context(), c.Response().Writer)
 }

@@ -129,3 +129,10 @@ func validateTextAnswer(question *Question, answer *Answer) error {
 
 	return nil
 }
+
+// Stats represents statistics about the survey service
+type Stats struct {
+	SurveyCount     int `json:"surveyCount"`
+	ResponseCount   int `json:"responseCount"`
+	UniqueUserCount int `json:"uniqueUserCount"`
+}

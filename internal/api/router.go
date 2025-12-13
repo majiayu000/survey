@@ -65,8 +65,6 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 		oauthGroup.POST("/logout", oh.Logout)
 	}
 
-	// Redirect root to surveys list
-	e.GET("/", func(c echo.Context) error {
-		return c.Redirect(302, "/surveys")
-	})
+	// Landing page with statistics
+	web.GET("/", h.LandingPage)
 }

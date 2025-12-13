@@ -105,6 +105,29 @@ func (m *MockQueries) UpdateSurveyResults(ctx context.Context, surveyID uuid.UUI
 	return fmt.Errorf("survey not found")
 }
 
+func (m *MockQueries) GetStats(ctx context.Context) (*models.Stats, error) {
+	// Count surveys
+	surveyCount := len(m.surveys)
+
+	// Count total responses
+	responseCount := len(m.responses)
+
+	// Count unique DIDs
+	uniqueDIDs := make(map[string]bool)
+	for _, response := range m.responses {
+		if response.VoterDID != nil && *response.VoterDID != "" {
+			uniqueDIDs[*response.VoterDID] = true
+		}
+	}
+	uniqueUserCount := len(uniqueDIDs)
+
+	return &models.Stats{
+		SurveyCount:     surveyCount,
+		ResponseCount:   responseCount,
+		UniqueUserCount: uniqueUserCount,
+	}, nil
+}
+
 // Test Helpers
 
 func setupTest() (*echo.Echo, *MockQueries, *Handlers) {
@@ -828,4 +851,140 @@ func TestPublishResultsHTML_SurveyNoURI(t *testing.T) {
 	// The handler checks for login first, so we may get login error or ATProto error
 	body := strings.ToLower(rec.Body.String())
 	assert.True(t, strings.Contains(body, "log") || strings.Contains(body, "atproto") || strings.Contains(body, "error"))
+}
+
+// RED PHASE: Test GetStats - returns correct statistics
+func TestGetStats_Success(t *testing.T) {
+	_, mq, _ := setupTest()
+
+	// Create some test data
+	survey1 := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "survey-1",
+		Title: "Survey 1",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Question 1",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey1)
+
+	survey2 := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "survey-2",
+		Title: "Survey 2",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Question 1",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey2)
+
+	// Create some responses
+	did1 := "did:plc:user1"
+	did2 := "did:plc:user2"
+
+	response1 := &models.Response{
+		ID:       uuid.New(),
+		SurveyID: survey1.ID,
+		VoterDID: &did1,
+		Answers:  map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt: time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response1)
+
+	response2 := &models.Response{
+		ID:       uuid.New(),
+		SurveyID: survey1.ID,
+		VoterDID: &did2,
+		Answers:  map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt: time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response2)
+
+	response3 := &models.Response{
+		ID:       uuid.New(),
+		SurveyID: survey2.ID,
+		VoterDID: &did1, // Same user, different survey
+		Answers:  map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt: time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response3)
+
+	// Test GetStats
+	stats, err := mq.GetStats(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 2, stats.SurveyCount, "Should have 2 surveys")
+	assert.Equal(t, 3, stats.ResponseCount, "Should have 3 responses")
+	assert.Equal(t, 2, stats.UniqueUserCount, "Should have 2 unique users")
+}
+
+// RED PHASE: Test LandingPageHTML - renders landing page with stats
+func TestLandingPageHTML_Success(t *testing.T) {
+	e, mq, h := setupTest()
+
+	// Create some test data
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "test-survey",
+		Title: "Test Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Test",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	did := "did:plc:testuser"
+	response := &models.Response{
+		ID:       uuid.New(),
+		SurveyID: survey.ID,
+		VoterDID: &did,
+		Answers:  map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt: time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response)
+
+	// Request landing page
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.LandingPage(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Check that the response contains expected content
+	body := rec.Body.String()
+	assert.Contains(t, body, "Welcome", "Should contain welcome message")
+	assert.Contains(t, body, "1", "Should show survey count")
+	assert.Contains(t, body, "Create Survey", "Should have CTA button")
+	assert.Contains(t, body, "Browse Surveys", "Should have browse button")
 }

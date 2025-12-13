@@ -1,0 +1,116 @@
+package templates
+
+import (
+	"fmt"
+	"github.com/openmeet-team/survey/internal/models"
+	"github.com/openmeet-team/survey/internal/oauth"
+)
+
+templ LandingPage(stats *models.Stats, user *oauth.User, profile *oauth.Profile) {
+	@Layout("Welcome", user, profile) {
+		<div class="card" style="text-align: center; padding: 3rem;">
+			<h1 style="font-size: 2.5rem; margin-bottom: 1rem;">Welcome to OpenMeet Survey</h1>
+			<p style="font-size: 1.2rem; color: #7f8c8d; margin-bottom: 2rem;">
+				Create and share surveys with your community using the ATProto ecosystem
+			</p>
+
+			<!-- Stats Section -->
+			<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; margin: 3rem 0;">
+				<div class="stat-card">
+					<div style="font-size: 3rem; font-weight: bold; color: #3498db;">
+						{ fmt.Sprintf("%d", stats.SurveyCount) }
+					</div>
+					<div style="color: #7f8c8d; margin-top: 0.5rem;">
+						Active Surveys
+					</div>
+				</div>
+				<div class="stat-card">
+					<div style="font-size: 3rem; font-weight: bold; color: #2ecc71;">
+						{ fmt.Sprintf("%d", stats.ResponseCount) }
+					</div>
+					<div style="color: #7f8c8d; margin-top: 0.5rem;">
+						Total Responses
+					</div>
+				</div>
+				<div class="stat-card">
+					<div style="font-size: 3rem; font-weight: bold; color: #e74c3c;">
+						{ fmt.Sprintf("%d", stats.UniqueUserCount) }
+					</div>
+					<div style="color: #7f8c8d; margin-top: 0.5rem;">
+						Unique Participants
+					</div>
+				</div>
+			</div>
+
+			<!-- Call to Action Buttons -->
+			<div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-top: 3rem;">
+				<a href="/surveys/new" class="btn" style="font-size: 1.1rem; padding: 1rem 2rem;">
+					Create Survey
+				</a>
+				<a href="/surveys" class="btn btn-secondary" style="font-size: 1.1rem; padding: 1rem 2rem;">
+					Browse Surveys
+				</a>
+			</div>
+
+			<!-- No login required message -->
+			<p style="color: #7f8c8d; margin-top: 1.5rem; font-size: 0.95rem;">
+				No account required to create surveys or vote.
+				if user == nil {
+					<a href="/oauth/login" style="color: #3498db;">Sign in with ATProto</a> to store your surveys, votes, and results on your PDS.
+				}
+			</p>
+
+			<!-- Features -->
+			<div style="margin-top: 4rem; text-align: left;">
+				<h2 style="text-align: center; margin-bottom: 2rem;">Features</h2>
+				<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem;">
+					<div>
+						<h3 style="color: #3498db; margin-bottom: 0.5rem;">ATProto Integration</h3>
+						<p style="color: #7f8c8d;">
+							Surveys and responses are stored on your Personal Data Server (PDS) for full data ownership
+						</p>
+					</div>
+					<div>
+						<h3 style="color: #3498db; margin-bottom: 0.5rem;">Anonymous Voting</h3>
+						<p style="color: #7f8c8d;">
+							Support for both authenticated and anonymous responses with vote-once protection
+						</p>
+					</div>
+					<div>
+						<h3 style="color: #3498db; margin-bottom: 0.5rem;">Real-time Results</h3>
+						<p style="color: #7f8c8d;">
+							Watch results update in real-time with live aggregation and beautiful visualizations
+						</p>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Footer Support Link -->
+		<div style="text-align: center; margin-top: 2rem; color: #7f8c8d;">
+			<p>
+				Need help? <a href="https://bsky.app/profile/openmeet.net" style="color: #3498db;">Contact Support</a>
+			</p>
+		</div>
+
+		<style>
+			.stat-card {
+				padding: 1.5rem;
+				background: #f8f9fa;
+				border-radius: 8px;
+				transition: transform 0.2s;
+			}
+			.stat-card:hover {
+				transform: translateY(-4px);
+			}
+			@media (max-width: 768px) {
+				h1 {
+					font-size: 2rem !important;
+				}
+				.stat-card {
+					padding: 1rem;
+				}
+			}
+		</style>
+	}
+}

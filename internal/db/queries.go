@@ -735,3 +735,26 @@ func (q *Queries) GetSurveyByResultsURI(ctx context.Context, resultsURI string) 
 
 	return survey, nil
 }
+
+// GetStats retrieves statistics about the survey service
+func (q *Queries) GetStats(ctx context.Context) (*models.Stats, error) {
+	query := `
+		SELECT
+			(SELECT COUNT(*) FROM surveys) as survey_count,
+			(SELECT COUNT(*) FROM responses) as response_count,
+			(SELECT COUNT(DISTINCT voter_did) FROM responses WHERE voter_did IS NOT NULL) as user_count
+	`
+
+	stats := &models.Stats{}
+	err := q.db.QueryRowContext(ctx, query).Scan(
+		&stats.SurveyCount,
+		&stats.ResponseCount,
+		&stats.UniqueUserCount,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stats: %w", err)
+	}
+
+	return stats, nil
+}

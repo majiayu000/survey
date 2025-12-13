@@ -10,6 +10,26 @@ templ CreateSurvey(user *oauth.User, profile *oauth.Profile) {
 				Define your survey using YAML or JSON format below.
 			</p>
 
+			<!-- Example Selector -->
+			<div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+				<label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+					Load an Example
+				</label>
+				<div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+					<select id="example-select" style="flex: 1; min-width: 200px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+						<option value="">-- Select an example --</option>
+						<option value="poll">Simple Poll</option>
+						<option value="feedback">Event Feedback</option>
+						<option value="retro">Team Retrospective</option>
+						<option value="rsvp">Event RSVP</option>
+						<option value="dev">Developer Survey</option>
+					</select>
+					<button type="button" id="load-example-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">
+						Load Example
+					</button>
+				</div>
+			</div>
+
 			<form action="/surveys" method="POST">
 				<div style="margin-bottom: 1.5rem;">
 					<label for="slug" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
@@ -37,7 +57,7 @@ templ CreateSurvey(user *oauth.User, profile *oauth.Profile) {
 						required
 						rows="20"
 						style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.9rem;"
-						placeholder={ exampleYAML() }
+						placeholder="Select an example above or write your own YAML/JSON"
 					></textarea>
 				</div>
 
@@ -47,22 +67,94 @@ templ CreateSurvey(user *oauth.User, profile *oauth.Profile) {
 					</button>
 				</div>
 			</form>
-
-			<div style="margin-top: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 4px;">
-				<h3 style="margin-bottom: 1rem;">Example YAML Format</h3>
-				<pre style="background: white; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem;">{ exampleYAML() }</pre>
-			</div>
-
-			<div style="margin-top: 1rem; padding: 1.5rem; background: #f8f9fa; border-radius: 4px;">
-				<h3 style="margin-bottom: 1rem;">Example JSON Format</h3>
-				<pre style="background: white; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem;">{ exampleJSON() }</pre>
-			</div>
 		</div>
-	}
-}
 
-func exampleYAML() string {
-	return `anonymous: true
+		<script>
+			const examples = {
+				poll: `questions:
+  - id: q1
+    text: "What day works best for our team meetup?"
+    type: single
+    required: true
+    options:
+      - id: mon
+        text: Monday
+      - id: wed
+        text: Wednesday
+      - id: fri
+        text: Friday`,
+				feedback: `anonymous: true
+questions:
+  - id: q1
+    text: "How would you rate this event overall?"
+    type: single
+    required: true
+    options:
+      - id: opt1
+        text: "⭐ Excellent"
+      - id: opt2
+        text: "👍 Good"
+      - id: opt3
+        text: "😐 Average"
+      - id: opt4
+        text: "👎 Poor"
+  - id: q2
+    text: "What did you enjoy most?"
+    type: text
+    required: false
+  - id: q3
+    text: "What could be improved?"
+    type: text
+    required: false`,
+				retro: `anonymous: true
+questions:
+  - id: q1
+    text: "What went well this sprint?"
+    type: text
+    required: true
+  - id: q2
+    text: "What could be improved?"
+    type: text
+    required: true
+  - id: q3
+    text: "How are you feeling about the project?"
+    type: single
+    required: true
+    options:
+      - id: opt1
+        text: "🚀 Excited"
+      - id: opt2
+        text: "😊 Good"
+      - id: opt3
+        text: "😐 Neutral"
+      - id: opt4
+        text: "😟 Concerned"`,
+				rsvp: `questions:
+  - id: q1
+    text: "Will you attend the event?"
+    type: single
+    required: true
+    options:
+      - id: yes
+        text: "Yes, I'll be there!"
+      - id: maybe
+        text: "Maybe"
+      - id: no
+        text: "Can't make it"
+  - id: q2
+    text: "Any dietary restrictions?"
+    type: multi
+    required: false
+    options:
+      - id: veg
+        text: Vegetarian
+      - id: vegan
+        text: Vegan
+      - id: gf
+        text: Gluten-free
+      - id: none
+        text: None`,
+				dev: `anonymous: true
 questions:
   - id: q1
     text: "What's your favorite programming language?"
@@ -92,41 +184,20 @@ questions:
     text: "Any additional comments?"
     type: text
     required: false`
-}
+			};
 
-func exampleJSON() string {
-	return `{
-  "anonymous": true,
-  "questions": [
-    {
-      "id": "q1",
-      "text": "What's your favorite programming language?",
-      "type": "single",
-      "required": true,
-      "options": [
-        {"id": "opt1", "text": "Go"},
-        {"id": "opt2", "text": "Python"},
-        {"id": "opt3", "text": "JavaScript"},
-        {"id": "opt4", "text": "Rust"}
-      ]
-    },
-    {
-      "id": "q2",
-      "text": "Which frameworks do you use?",
-      "type": "multi",
-      "required": false,
-      "options": [
-        {"id": "opt1", "text": "React"},
-        {"id": "opt2", "text": "Vue"},
-        {"id": "opt3", "text": "Angular"}
-      ]
-    },
-    {
-      "id": "q3",
-      "text": "Any additional comments?",
-      "type": "text",
-      "required": false
-    }
-  ]
-}`
+			document.getElementById('load-example-btn').addEventListener('click', function() {
+				const select = document.getElementById('example-select');
+				const textarea = document.getElementById('definition');
+				const selected = select.value;
+
+				if (selected && examples[selected]) {
+					textarea.value = examples[selected];
+					textarea.focus();
+				} else {
+					alert('Please select an example first');
+				}
+			});
+		</script>
+	}
 }

@@ -13,6 +13,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Install templ and generate template files
+RUN go install github.com/a-h/templ/cmd/templ@latest
+RUN templ generate
+
 # Build both binaries
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /consumer ./cmd/consumer

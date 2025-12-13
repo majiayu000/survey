@@ -1,34 +1,28 @@
 package oauth
 
 import (
-	"encoding/base32"
-	"strings"
 	"time"
 )
 
+// ATProto uses a sortable base32 alphabet where digits come first
+// This ensures lexicographic ordering matches numerical ordering
+const tidAlphabet = "234567abcdefghijklmnopqrstuvwxyz"
+
 // GenerateTID generates a timestamp-based identifier (TID) for ATProto records
-// TID format: base32-encoded microsecond timestamp (13 characters)
+// TID format: base32-sortable encoded microsecond timestamp (13 characters)
 // This ensures records are sortable by creation time
 func GenerateTID() string {
 	// Get current time in microseconds since Unix epoch
 	now := time.Now()
-	microTimestamp := now.UnixMicro()
+	microTimestamp := uint64(now.UnixMicro())
 
-	// Convert to 8 bytes (big-endian)
-	bytes := make([]byte, 8)
-	bytes[0] = byte(microTimestamp >> 56)
-	bytes[1] = byte(microTimestamp >> 48)
-	bytes[2] = byte(microTimestamp >> 40)
-	bytes[3] = byte(microTimestamp >> 32)
-	bytes[4] = byte(microTimestamp >> 24)
-	bytes[5] = byte(microTimestamp >> 16)
-	bytes[6] = byte(microTimestamp >> 8)
-	bytes[7] = byte(microTimestamp)
+	// Encode as base32-sortable (13 characters for 64-bit timestamp)
+	// Each character encodes 5 bits, 13 chars = 65 bits (enough for 64-bit timestamp)
+	result := make([]byte, 13)
+	for i := 12; i >= 0; i-- {
+		result[i] = tidAlphabet[microTimestamp&0x1f]
+		microTimestamp >>= 5
+	}
 
-	// Encode as base32 (no padding) and lowercase
-	encoder := base32.StdEncoding.WithPadding(base32.NoPadding)
-	encoded := encoder.EncodeToString(bytes)
-
-	// ATProto uses lowercase base32
-	return strings.ToLower(encoded)
+	return string(result)
 }

@@ -10,6 +10,103 @@ templ CreateSurvey(user *oauth.User, profile *oauth.Profile) {
 				Define your survey using YAML or JSON format below.
 			</p>
 
+			<!-- Documentation Section -->
+			<details style="margin-bottom: 1.5rem; border: 1px solid #e1e8ed; border-radius: 8px; background: #fff;">
+				<summary style="padding: 1rem; cursor: pointer; font-weight: 600; background: #f8f9fa; border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 0.5rem;">
+					<span style="font-size: 1.1rem;">📖</span> YAML Format Documentation
+				</summary>
+				<div style="padding: 1.5rem; border-top: 1px solid #e1e8ed;">
+					<h3 style="margin-top: 0; color: #2c3e50;">Question Types</h3>
+					<table style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem;">
+						<tr style="background: #f8f9fa;">
+							<th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid #e1e8ed;">Type</th>
+							<th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid #e1e8ed;">Behavior</th>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>single</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">Pick exactly one option (radio buttons)</td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>multi</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">Pick one or more options (checkboxes)</td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem;"><code>text</code></td>
+							<td style="padding: 0.5rem;">Free-form text answer</td>
+						</tr>
+					</table>
+
+					<h3 style="color: #2c3e50;">Question Fields</h3>
+					<table style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem;">
+						<tr style="background: #f8f9fa;">
+							<th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid #e1e8ed;">Field</th>
+							<th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid #e1e8ed;">Required</th>
+							<th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid #e1e8ed;">Description</th>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>id</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">Yes</td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">Unique identifier (e.g., "q1", "feedback")</td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>text</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">Yes</td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">The question text shown to users</td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>type</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">Yes</td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>single</code>, <code>multi</code>, or <code>text</code></td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>required</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">No</td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">If true, must be answered (default: false)</td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem;"><code>options</code></td>
+							<td style="padding: 0.5rem;">For single/multi</td>
+							<td style="padding: 0.5rem;">List of options with <code>id</code> and <code>text</code> fields</td>
+						</tr>
+					</table>
+
+					<h3 style="color: #2c3e50;">Survey-Level Fields</h3>
+					<table style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem;">
+						<tr style="background: #f8f9fa;">
+							<th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid #e1e8ed;">Field</th>
+							<th style="padding: 0.5rem; text-align: left; border-bottom: 1px solid #e1e8ed;">Description</th>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>questions</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">List of questions (required, at least 1)</td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>anonymous</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">Set to true for anonymous surveys (results never show voters)</td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;"><code>startsAt</code></td>
+							<td style="padding: 0.5rem; border-bottom: 1px solid #e1e8ed;">When voting opens (ISO 8601 format)</td>
+						</tr>
+						<tr>
+							<td style="padding: 0.5rem;"><code>endsAt</code></td>
+							<td style="padding: 0.5rem;">When voting closes (ISO 8601 format)</td>
+						</tr>
+					</table>
+
+					<h3 style="color: #2c3e50;">Validation Rules</h3>
+					<ul style="margin: 0; padding-left: 1.5rem; color: #34495e;">
+						<li>At least 1 question required</li>
+						<li>Choice questions (single/multi) need at least 2 options</li>
+						<li>IDs must be unique within their scope</li>
+						<li>Text and IDs cannot be empty</li>
+					</ul>
+
+					<h3 style="color: #2c3e50; margin-top: 1.5rem;">Example Structure</h3>
+					<pre id="doc-example" style="background: #2d3436; color: #dfe6e9; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; white-space: pre;"><code></code></pre>
+				</div>
+			</details>
+
 			<!-- Example Selector -->
 			<div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
 				<label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
@@ -198,6 +295,42 @@ questions:
 					alert('Please select an example first');
 				}
 			});
+
+			// Populate documentation example
+			const docExample = document.getElementById('doc-example');
+			if (docExample) {
+				docExample.querySelector('code').textContent = `questions:
+  - id: rating
+    text: "How satisfied are you?"
+    type: single
+    required: true
+    options:
+      - id: "5"
+        text: Very Satisfied
+      - id: "4"
+        text: Satisfied
+      - id: "3"
+        text: Neutral
+      - id: "2"
+        text: Dissatisfied
+      - id: "1"
+        text: Very Dissatisfied
+
+  - id: features
+    text: "Which features do you use?"
+    type: multi
+    options:
+      - id: search
+        text: Search
+      - id: filter
+        text: Filters
+      - id: export
+        text: Export
+
+  - id: comments
+    text: "Any additional feedback?"
+    type: text`;
+			}
 		</script>
 	}
 }

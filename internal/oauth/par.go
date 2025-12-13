@@ -73,8 +73,8 @@ func ExecutePAR(config PARConfig) (string, error) {
 		return "", fmt.Errorf("failed to create client assertion: %v", err)
 	}
 
-	// Create DPoP proof
-	dpopProof, err := CreateDPoPProof(config.DPoPKey, "POST", config.PAREndpoint, "")
+	// Create DPoP proof (no access token for PAR endpoint)
+	dpopProof, err := CreateDPoPProof(config.DPoPKey, "POST", config.PAREndpoint, "", "")
 	if err != nil {
 		return "", fmt.Errorf("failed to create DPoP proof: %v", err)
 	}
@@ -87,7 +87,7 @@ func ExecutePAR(config PARConfig) (string, error) {
 
 	// If server requires DPoP nonce, retry with nonce
 	if dpopNonce != "" {
-		dpopProof, err = CreateDPoPProof(config.DPoPKey, "POST", config.PAREndpoint, dpopNonce)
+		dpopProof, err = CreateDPoPProof(config.DPoPKey, "POST", config.PAREndpoint, dpopNonce, "")
 		if err != nil {
 			return "", fmt.Errorf("failed to create DPoP proof with nonce: %v", err)
 		}

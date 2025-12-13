@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"strings"
@@ -62,7 +63,7 @@ func TestCreateDPoPProof(t *testing.T) {
 		method := "POST"
 		url := "https://bsky.social/oauth/par"
 
-		proof, err := CreateDPoPProof(privateJWK, method, url, "")
+		proof, err := CreateDPoPProof(privateJWK, method, url, "", "")
 		require.NoError(t, err)
 		assert.NotEmpty(t, proof)
 
@@ -99,7 +100,7 @@ func TestCreateDPoPProof(t *testing.T) {
 		privateJWK := GenerateSecretJWK()
 		nonce := "test-nonce-12345"
 
-		proof, err := CreateDPoPProof(privateJWK, "POST", "https://example.com", nonce)
+		proof, err := CreateDPoPProof(privateJWK, "POST", "https://example.com", nonce, "")
 		require.NoError(t, err)
 
 		parts := strings.Split(proof, ".")
@@ -113,7 +114,7 @@ func TestCreateDPoPProof(t *testing.T) {
 	})
 
 	t.Run("returns error for invalid JWK", func(t *testing.T) {
-		_, err := CreateDPoPProof("invalid", "POST", "https://example.com", "")
+		_, err := CreateDPoPProof("invalid", "POST", "https://example.com", "", "")
 		assert.Error(t, err)
 	})
 }
@@ -129,6 +130,74 @@ func TestGenerateJTI(t *testing.T) {
 		jti1 := GenerateJTI()
 		jti2 := GenerateJTI()
 		assert.NotEqual(t, jti1, jti2)
+	})
+}
+
+func TestCreateDPoPProof_WithAccessToken(t *testing.T) {
+	t.Run("includes ath claim when access token provided", func(t *testing.T) {
+		privateJWK := GenerateSecretJWK()
+		method := "POST"
+		url := "https://bsky.social/xrpc/com.atproto.repo.createRecord"
+		accessToken := "test-access-token-12345"
+
+		proof, err := CreateDPoPProof(privateJWK, method, url, "", accessToken)
+		require.NoError(t, err)
+		assert.NotEmpty(t, proof)
+
+		// Decode payload
+		parts := strings.Split(proof, ".")
+		payloadBytes, err := decodeJWTPart(parts[1])
+		require.NoError(t, err)
+		var payload map[string]interface{}
+		err = json.Unmarshal(payloadBytes, &payload)
+		require.NoError(t, err)
+
+		// Verify ath claim exists
+		assert.NotNil(t, payload["ath"], "ath claim should be present when access token provided")
+	})
+
+	t.Run("ath claim is correct SHA-256 hash of access token", func(t *testing.T) {
+		privateJWK := GenerateSecretJWK()
+		accessToken := "test-access-token-12345"
+
+		proof, err := CreateDPoPProof(privateJWK, "POST", "https://example.com", "", accessToken)
+		require.NoError(t, err)
+
+		// Decode payload
+		parts := strings.Split(proof, ".")
+		payloadBytes, err := decodeJWTPart(parts[1])
+		require.NoError(t, err)
+		var payload map[string]interface{}
+		err = json.Unmarshal(payloadBytes, &payload)
+		require.NoError(t, err)
+
+		// Compute expected ath value
+		// ath = base64url(SHA-256(access_token))
+		hash := sha256.Sum256([]byte(accessToken))
+		expectedAth := base64.RawURLEncoding.EncodeToString(hash[:])
+
+		assert.Equal(t, expectedAth, payload["ath"])
+	})
+
+	t.Run("omits ath claim when access token empty", func(t *testing.T) {
+		privateJWK := GenerateSecretJWK()
+		method := "POST"
+		url := "https://bsky.social/oauth/token"
+
+		proof, err := CreateDPoPProof(privateJWK, method, url, "", "")
+		require.NoError(t, err)
+
+		// Decode payload
+		parts := strings.Split(proof, ".")
+		payloadBytes, err := decodeJWTPart(parts[1])
+		require.NoError(t, err)
+		var payload map[string]interface{}
+		err = json.Unmarshal(payloadBytes, &payload)
+		require.NoError(t, err)
+
+		// Verify ath claim is NOT present
+		_, exists := payload["ath"]
+		assert.False(t, exists, "ath claim should not be present when access token empty")
 	})
 }
 

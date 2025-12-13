@@ -35,6 +35,6 @@ Thumbs.db
 # Templ generated files
 *_templ.go
 
-# binaries
-api
-consumer
+# binaries (root level only)
+/api
+/consumer

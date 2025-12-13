@@ -50,6 +50,11 @@ func (p *Processor) ProcessMessage(ctx context.Context, msg *JetstreamMessage) e
 		return nil // Skip non-commit messages
 	}
 
+	// Jetstream puts the DID at message level, copy it to commit.Repo for convenience
+	if msg.Commit.Repo == "" && msg.Did != "" {
+		msg.Commit.Repo = msg.Did
+	}
+
 	// Route to appropriate handler based on collection
 	switch msg.Commit.Collection {
 	case "net.openmeet.survey":

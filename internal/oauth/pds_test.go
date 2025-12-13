@@ -1,6 +1,8 @@
 package oauth
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -65,6 +67,65 @@ func TestCreateRecord(t *testing.T) {
 		expectedCID := "bafytest123"
 		if cid != expectedCID {
 			t.Errorf("CID mismatch: got %s, want %s", cid, expectedCID)
+		}
+	})
+
+	t.Run("includes validate false in payload for custom lexicons", func(t *testing.T) {
+		// Mock PDS server that captures and validates the request payload
+		pdsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Read the request body
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("Failed to read request body: %v", err)
+			}
+
+			// Parse the JSON payload
+			var payload map[string]interface{}
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatalf("Failed to unmarshal payload: %v", err)
+			}
+
+			// Verify validate field exists and is false
+			validateVal, exists := payload["validate"]
+			if !exists {
+				t.Error("Expected 'validate' field in payload")
+			} else if validateVal != false {
+				t.Errorf("Expected validate=false, got %v", validateVal)
+			}
+
+			// Verify other expected fields
+			if payload["repo"] != "did:plc:test123" {
+				t.Errorf("Expected repo=did:plc:test123, got %v", payload["repo"])
+			}
+			if payload["collection"] != "net.openmeet.survey" {
+				t.Errorf("Expected collection=net.openmeet.survey, got %v", payload["collection"])
+			}
+
+			// Return success response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"uri":"at://did:plc:test123/net.openmeet.survey/abc123","cid":"bafytest123"}`))
+		}))
+		defer pdsServer.Close()
+
+		tokenExpiresAt := time.Now().Add(1 * time.Hour)
+		session := &OAuthSession{
+			ID:             "test-session",
+			DID:            "did:plc:test123",
+			AccessToken:    "test-access-token",
+			RefreshToken:   "test-refresh-token",
+			DPoPKey:        GenerateSecretJWK(),
+			PDSUrl:         pdsServer.URL,
+			TokenExpiresAt: &tokenExpiresAt,
+		}
+
+		record := map[string]interface{}{
+			"question": "What's your favorite color?",
+		}
+
+		_, _, err := CreateRecord(session, "net.openmeet.survey", "", record)
+		if err != nil {
+			t.Fatalf("CreateRecord failed: %v", err)
 		}
 	})
 

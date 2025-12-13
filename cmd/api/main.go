@@ -49,8 +49,11 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// Create handlers
-	handlers := api.NewHandlers(queries)
+	// Create OAuth storage for session management
+	oauthStorage := oauth.NewStorage(database)
+
+	// Create handlers with OAuth storage for PDS writes
+	handlers := api.NewHandlersWithOAuth(queries, oauthStorage)
 	healthHandlers := api.NewHealthHandlers(database)
 
 	// Create OAuth handlers (optional - requires OAUTH_SECRET_JWK_B64 and SERVER_HOST env vars)

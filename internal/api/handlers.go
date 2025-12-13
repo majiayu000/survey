@@ -617,9 +617,12 @@ func (h *Handlers) SubmitResponseHTML(c echo.Context) error {
 
 	// Check if user is logged in and survey has a URI (ATProto record)
 	// If both conditions are met, write response to user's PDS
+	c.Logger().Infof("PDS write check: oauthStorage=%v, surveyURI=%v", h.oauthStorage != nil, survey.URI != nil)
 	if h.oauthStorage != nil && survey.URI != nil {
 		session, err := oauth.GetSession(c, h.oauthStorage)
+		c.Logger().Infof("OAuth session lookup: session=%v, err=%v", session != nil, err)
 		if err == nil && session != nil {
+			c.Logger().Infof("Attempting PDS write for user %s to survey %s", session.DID, *survey.URI)
 			// Generate TID for response rkey
 			rkey := oauth.GenerateTID()
 			atURI := fmt.Sprintf("at://%s/net.openmeet.survey.response/%s", session.DID, rkey)
@@ -662,6 +665,7 @@ func (h *Handlers) SubmitResponseHTML(c echo.Context) error {
 				voterDID = nil
 			} else {
 				// PDS write succeeded - update with actual CID
+				c.Logger().Infof("PDS write succeeded: uri=%s, cid=%s", pdsURI, pdsCID)
 				uri = &pdsURI
 				cid = &pdsCID
 			}

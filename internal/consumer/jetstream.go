@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -47,8 +48,10 @@ func (c *JetstreamClient) Connect(ctx context.Context) error {
 
 	log.Printf("Connecting to Jetstream: %s", url)
 
-	// Establish WebSocket connection
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, url, nil)
+	// Establish WebSocket connection with User-Agent header (required by Jetstream)
+	header := http.Header{}
+	header.Set("User-Agent", "survey-consumer/1.0")
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, url, header)
 	if err != nil {
 		return fmt.Errorf("failed to dial websocket: %w", err)
 	}

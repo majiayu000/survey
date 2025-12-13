@@ -73,8 +73,8 @@ func ExchangeToken(config TokenConfig) (*TokenResponse, error) {
 		return nil, fmt.Errorf("failed to create client assertion: %v", err)
 	}
 
-	// Create DPoP proof
-	dpopProof, err := CreateDPoPProof(config.DPoPKey, "POST", config.TokenEndpoint, "")
+	// Create DPoP proof (no access token for token endpoint)
+	dpopProof, err := CreateDPoPProof(config.DPoPKey, "POST", config.TokenEndpoint, "", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DPoP proof: %v", err)
 	}
@@ -87,7 +87,7 @@ func ExchangeToken(config TokenConfig) (*TokenResponse, error) {
 
 	// If server requires DPoP nonce, retry with nonce
 	if dpopNonce != "" {
-		dpopProof, err = CreateDPoPProof(config.DPoPKey, "POST", config.TokenEndpoint, dpopNonce)
+		dpopProof, err = CreateDPoPProof(config.DPoPKey, "POST", config.TokenEndpoint, dpopNonce, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create DPoP proof with nonce: %v", err)
 		}

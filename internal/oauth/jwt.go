@@ -1,6 +1,8 @@
 package oauth
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -61,7 +63,8 @@ func SignClientAssertion(privateJWK, clientID, audience string) (string, error) 
 
 // CreateDPoPProof creates a DPoP proof JWT
 // DPoP (Demonstrating Proof-of-Possession) binds tokens to specific keys
-func CreateDPoPProof(privateJWK, method, url, nonce string) (string, error) {
+// accessToken is optional - when provided, adds "ath" claim (RFC 9449 section 4.2)
+func CreateDPoPProof(privateJWK, method, url, nonce, accessToken string) (string, error) {
 	var jwk jose.JSONWebKey
 	err := json.Unmarshal([]byte(privateJWK), &jwk)
 	if err != nil {
@@ -103,6 +106,14 @@ func CreateDPoPProof(privateJWK, method, url, nonce string) (string, error) {
 	// Add nonce if provided
 	if nonce != "" {
 		claims["nonce"] = nonce
+	}
+
+	// Add access token hash if access token provided
+	// RFC 9449 section 4.2: ath = base64url(SHA-256(access_token))
+	if accessToken != "" {
+		hash := sha256.Sum256([]byte(accessToken))
+		ath := base64.RawURLEncoding.EncodeToString(hash[:])
+		claims["ath"] = ath
 	}
 
 	claimsJSON, err := json.Marshal(claims)

@@ -35,7 +35,8 @@ func main() {
 
 	// Build Jetstream URL
 	// Subscribe to survey, response, and results collections
-	jetstreamURL := "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=net.openmeet.survey,net.openmeet.survey.response,net.openmeet.survey.results"
+	// Note: Jetstream requires repeated query params, not comma-separated values
+	jetstreamURL := "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=net.openmeet.survey&wantedCollections=net.openmeet.survey.response&wantedCollections=net.openmeet.survey.results"
 
 	// Create context with cancellation for graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)

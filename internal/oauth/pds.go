@@ -37,10 +37,13 @@ func CreateRecord(session *OAuthSession, collection string, rkey string, record 
 	}
 
 	// Build request payload
+	// validate: false is required for custom lexicons like net.openmeet.survey
+	validateFalse := false
 	payload := map[string]interface{}{
 		"repo":       session.DID,
 		"collection": collection,
 		"record":     record,
+		"validate":   &validateFalse,
 	}
 
 	// Add rkey if provided
@@ -56,8 +59,9 @@ func CreateRecord(session *OAuthSession, collection string, rkey string, record 
 	// Build PDS URL
 	pdsURL := strings.TrimSuffix(session.PDSUrl, "/") + "/xrpc/com.atproto.repo.createRecord"
 
-	// Create DPoP proof for POST request
-	dpopProof, err := CreateDPoPProof(session.DPoPKey, "POST", pdsURL, "")
+	// Create DPoP proof for POST request with access token hash
+	// RFC 9449 requires "ath" claim when using DPoP with access tokens
+	dpopProof, err := CreateDPoPProof(session.DPoPKey, "POST", pdsURL, "", session.AccessToken)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create DPoP proof: %w", err)
 	}
@@ -89,8 +93,8 @@ func CreateRecord(session *OAuthSession, collection string, rkey string, record 
 	if resp.StatusCode == http.StatusUnauthorized {
 		dpopNonce := resp.Header.Get("DPoP-Nonce")
 		if dpopNonce != "" {
-			// Retry with nonce
-			dpopProof, err = CreateDPoPProof(session.DPoPKey, "POST", pdsURL, dpopNonce)
+			// Retry with nonce and access token hash
+			dpopProof, err = CreateDPoPProof(session.DPoPKey, "POST", pdsURL, dpopNonce, session.AccessToken)
 			if err != nil {
 				return "", "", fmt.Errorf("failed to create DPoP proof with nonce: %w", err)
 			}
@@ -161,8 +165,8 @@ func RefreshAccessToken(session *OAuthSession, authServerURL, clientID, clientKe
 		return "", "", 0, fmt.Errorf("failed to create client assertion: %w", err)
 	}
 
-	// Create DPoP proof
-	dpopProof, err := CreateDPoPProof(session.DPoPKey, "POST", tokenEndpoint, "")
+	// Create DPoP proof (no access token for token endpoint)
+	dpopProof, err := CreateDPoPProof(session.DPoPKey, "POST", tokenEndpoint, "", "")
 	if err != nil {
 		return "", "", 0, fmt.Errorf("failed to create DPoP proof: %w", err)
 	}
@@ -204,8 +208,8 @@ func RefreshAccessToken(session *OAuthSession, authServerURL, clientID, clientKe
 			if errorCode, ok := errorResp["error"].(string); ok && errorCode == "use_dpop_nonce" {
 				dpopNonce := resp.Header.Get("DPoP-Nonce")
 				if dpopNonce != "" {
-					// Retry with nonce
-					dpopProof, err = CreateDPoPProof(session.DPoPKey, "POST", tokenEndpoint, dpopNonce)
+					// Retry with nonce (no access token for token endpoint)
+					dpopProof, err = CreateDPoPProof(session.DPoPKey, "POST", tokenEndpoint, dpopNonce, "")
 					if err != nil {
 						return "", "", 0, fmt.Errorf("failed to create DPoP proof with nonce: %w", err)
 					}

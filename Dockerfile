@@ -3,15 +3,24 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates
+# Install build dependencies (including Node.js for frontend)
+RUN apk add --no-cache git ca-certificates nodejs npm
 
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
 
+# Copy package files for npm caching
+COPY web/package.json web/package-lock.json ./web/
+
+# Install npm dependencies
+RUN cd web && npm ci
+
 # Copy source code
 COPY . .
+
+# Build frontend assets
+RUN cd web && npm run build
 
 # Install templ and generate template files
 RUN go install github.com/a-h/templ/cmd/templ@latest
@@ -40,6 +49,12 @@ COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
 
 # Copy migrations for database migrations
 COPY --from=builder /app/internal/db/migrations /migrations
+
+# Copy frontend assets
+COPY --from=builder /app/web/dist /app/web/dist
+
+# Set working directory (so relative paths work)
+WORKDIR /app
 
 # Use non-root user
 USER appuser

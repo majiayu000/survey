@@ -52,7 +52,8 @@ func SecurityHeadersMiddleware() echo.MiddlewareFunc {
 					"style-src 'self' 'unsafe-inline'; " + // unsafe-inline needed for inline styles
 					"img-src 'self' data: https:; " + // Allow images from same origin, data URIs, and HTTPS
 					"font-src 'self' data:; " + // Allow fonts from same origin and data URIs
-					"connect-src 'self' https://*.posthog.com https://*.i.posthog.com;" // Allow PostHog analytics
+					"connect-src 'self' https://*.posthog.com https://*.i.posthog.com; " + // Allow PostHog analytics
+					"worker-src 'self' blob:;" // Allow PostHog web workers
 
 				res.Header().Set("Content-Security-Policy", csp)
 			}

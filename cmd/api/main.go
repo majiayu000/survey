@@ -64,6 +64,10 @@ func main() {
 	// Create OAuth storage for session management
 	oauthStorage := oauth.NewStorage(database)
 
+	// Start OAuth cleanup worker (runs every hour)
+	cleanupCtx, cancelCleanup := context.WithCancel(ctx)
+	go oauth.StartCleanupWorker(cleanupCtx, oauthStorage, 1*time.Hour)
+
 	// Create handlers with OAuth storage for PDS writes
 	handlers := api.NewHandlersWithOAuth(queries, oauthStorage)
 	healthHandlers := api.NewHealthHandlers(database)
@@ -119,11 +123,14 @@ func main() {
 
 	log.Println("Shutting down server...")
 
+	// Stop cleanup worker
+	cancelCleanup()
+
 	// Graceful shutdown with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := e.Shutdown(ctx); err != nil {
+	if err := e.Shutdown(shutdownCtx); err != nil {
 		e.Logger.Fatal(err)
 	}
 

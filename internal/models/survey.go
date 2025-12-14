@@ -69,6 +69,7 @@ const (
 	MaxOptionsPerQuestion   = 20
 	MaxQuestionTextLength   = 1000
 	MaxOptionTextLength     = 500
+	MaxTextAnswerLength     = 5000 // Maximum length for free-form text answers
 )
 
 // Regex patterns for sanitization (compiled once for performance)

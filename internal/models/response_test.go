@@ -373,3 +373,58 @@ func TestValidateAnswers_RejectsEmptyTextAfterSanitization(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "text answer is required")
 }
+
+func TestValidateAnswers_RejectsTextAnswerExceedingMaxLength(t *testing.T) {
+	def := &SurveyDefinition{
+		Questions: []Question{
+			{
+				ID:       "q1",
+				Text:     "What are your thoughts?",
+				Type:     QuestionTypeText,
+				Required: true,
+			},
+		},
+		Anonymous: false,
+	}
+
+	// Create a text answer that exceeds 5000 characters
+	longText := make([]byte, 5001)
+	for i := range longText {
+		longText[i] = 'a'
+	}
+
+	answers := map[string]Answer{
+		"q1": {Text: string(longText)},
+	}
+
+	err := ValidateAnswers(def, answers)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "text answer exceeds maximum length of 5000 characters")
+}
+
+func TestValidateAnswers_AcceptsTextAnswerAtMaxLength(t *testing.T) {
+	def := &SurveyDefinition{
+		Questions: []Question{
+			{
+				ID:       "q1",
+				Text:     "What are your thoughts?",
+				Type:     QuestionTypeText,
+				Required: true,
+			},
+		},
+		Anonymous: false,
+	}
+
+	// Create a text answer exactly at 5000 characters
+	maxText := make([]byte, 5000)
+	for i := range maxText {
+		maxText[i] = 'a'
+	}
+
+	answers := map[string]Answer{
+		"q1": {Text: string(maxText)},
+	}
+
+	err := ValidateAnswers(def, answers)
+	require.NoError(t, err)
+}

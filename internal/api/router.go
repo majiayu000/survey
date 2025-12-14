@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/openmeet-team/survey/internal/oauth"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -29,29 +30,49 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 	// Create rate limiters
 	rateLimiters := NewRateLimiterConfig()
 
+	// Create body limit config
+	bodyLimits := DefaultBodyLimitConfig()
+
 	// JSON API routes - v1
 	api := e.Group("/api/v1")
 
-	// Survey management with rate limiting
-	api.POST("/surveys", h.CreateSurvey, rateLimiters.SurveyCreation.Middleware())
+	// CORS configuration for API routes
+	api.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"}, // Allow all origins for MVP
+		AllowMethods: []string{
+			echo.GET,
+			echo.POST,
+			echo.PUT,
+			echo.DELETE,
+			echo.OPTIONS,
+		},
+		AllowHeaders: []string{
+			echo.HeaderContentType,
+			echo.HeaderAuthorization,
+			echo.HeaderAccept,
+		},
+	}))
+
+	// Survey management with rate limiting and body limits
+	api.POST("/surveys", h.CreateSurvey, rateLimiters.SurveyCreation.Middleware(), NewBodyLimitMiddleware(bodyLimits.SurveyCreation))
 	api.GET("/surveys", h.ListSurveys, rateLimiters.GeneralAPI.Middleware())
 	api.GET("/surveys/:slug", h.GetSurvey, rateLimiters.GeneralAPI.Middleware())
 
-	// Response submission and results with rate limiting
-	api.POST("/surveys/:slug/responses", h.SubmitResponse, rateLimiters.VoteSubmission.Middleware())
+	// Response submission and results with rate limiting and body limits
+	api.POST("/surveys/:slug/responses", h.SubmitResponse, rateLimiters.VoteSubmission.Middleware(), NewBodyLimitMiddleware(bodyLimits.ResponseSubmission))
 	api.GET("/surveys/:slug/results", h.GetResults, rateLimiters.GeneralAPI.Middleware())
 
 	// HTML routes (Templ handlers) - with session middleware
 	web := e.Group("", sessionMiddleware)
 
-	// Survey list and creation with rate limiting
+	// Survey list and creation with rate limiting and body limits
 	web.GET("/surveys", h.ListSurveysHTML, rateLimiters.GeneralAPI.Middleware())
 	web.GET("/surveys/new", h.CreateSurveyPageHTML, rateLimiters.GeneralAPI.Middleware())
-	web.POST("/surveys", h.CreateSurveyHTML, rateLimiters.SurveyCreation.Middleware())
+	web.POST("/surveys", h.CreateSurveyHTML, rateLimiters.SurveyCreation.Middleware(), NewBodyLimitMiddleware(bodyLimits.SurveyCreation))
 
-	// Survey viewing and voting with rate limiting
+	// Survey viewing and voting with rate limiting and body limits
 	web.GET("/surveys/:slug", h.GetSurveyHTML, rateLimiters.GeneralAPI.Middleware())
-	web.POST("/surveys/:slug/responses", h.SubmitResponseHTML, rateLimiters.VoteSubmission.Middleware())
+	web.POST("/surveys/:slug/responses", h.SubmitResponseHTML, rateLimiters.VoteSubmission.Middleware(), NewBodyLimitMiddleware(bodyLimits.ResponseSubmission))
 
 	// Results with rate limiting
 	web.GET("/surveys/:slug/results", h.GetResultsHTML, rateLimiters.GeneralAPI.Middleware())

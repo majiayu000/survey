@@ -133,6 +133,11 @@ func validateTextAnswer(question *Question, answer *Answer) error {
 		return errors.New("text answer is required")
 	}
 
+	// Check length limit
+	if len(answer.Text) > MaxTextAnswerLength {
+		return fmt.Errorf("text answer exceeds maximum length of %d characters", MaxTextAnswerLength)
+	}
+
 	return nil
 }
 

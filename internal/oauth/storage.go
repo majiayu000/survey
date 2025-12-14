@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -228,4 +229,45 @@ func (s *Storage) CleanupExpiredSessions(ctx context.Context) (int64, error) {
 	}
 
 	return count, nil
+}
+
+// StartCleanupWorker starts a background goroutine that periodically cleans up
+// expired OAuth requests and sessions. It runs until the context is cancelled.
+func StartCleanupWorker(ctx context.Context, storage *Storage, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	log.Printf("OAuth cleanup worker started (interval: %v)", interval)
+
+	// Run cleanup immediately on start
+	runCleanup(ctx, storage)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("OAuth cleanup worker stopped")
+			return
+		case <-ticker.C:
+			runCleanup(ctx, storage)
+		}
+	}
+}
+
+// runCleanup executes both cleanup operations and logs results
+func runCleanup(ctx context.Context, storage *Storage) {
+	// Cleanup expired requests
+	requestCount, err := storage.CleanupExpiredRequests(ctx)
+	if err != nil {
+		log.Printf("Error cleaning up expired OAuth requests: %v", err)
+	} else if requestCount > 0 {
+		log.Printf("Cleaned up %d expired OAuth requests", requestCount)
+	}
+
+	// Cleanup expired sessions
+	sessionCount, err := storage.CleanupExpiredSessions(ctx)
+	if err != nil {
+		log.Printf("Error cleaning up expired OAuth sessions: %v", err)
+	} else if sessionCount > 0 {
+		log.Printf("Cleaned up %d expired OAuth sessions", sessionCount)
+	}
 }

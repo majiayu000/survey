@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/openmeet-team/survey/internal/telemetry"
 )
 
@@ -58,4 +59,25 @@ func MetricsMiddleware() echo.MiddlewareFunc {
 			return err
 		}
 	}
+}
+
+// BodyLimitConfig defines body size limits for different route types
+type BodyLimitConfig struct {
+	SurveyCreation   string
+	ResponseSubmission string
+	GeneralAPI       string
+}
+
+// DefaultBodyLimitConfig returns the default body size limits
+func DefaultBodyLimitConfig() BodyLimitConfig {
+	return BodyLimitConfig{
+		SurveyCreation:     "100KB", // Survey YAML definitions
+		ResponseSubmission: "10KB",  // Survey responses
+		GeneralAPI:         "1MB",   // Default for other endpoints
+	}
+}
+
+// NewBodyLimitMiddleware creates a body limit middleware with the given limit
+func NewBodyLimitMiddleware(limit string) echo.MiddlewareFunc {
+	return middleware.BodyLimit(limit)
 }

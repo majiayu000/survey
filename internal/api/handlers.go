@@ -114,10 +114,7 @@ func (h *Handlers) CreateSurvey(c echo.Context) error {
 	// Check if slug already exists
 	exists, err := h.queries.SlugExists(c.Request().Context(), slug)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to check slug availability",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to check slug availability", err)
 	}
 	if exists {
 		return c.JSON(http.StatusConflict, ErrorResponse{
@@ -145,10 +142,7 @@ func (h *Handlers) CreateSurvey(c echo.Context) error {
 
 	// Save to database
 	if err := h.queries.CreateSurvey(c.Request().Context(), survey); err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to create survey",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to create survey", err)
 	}
 
 	// Return response
@@ -168,10 +162,7 @@ func (h *Handlers) GetSurvey(c echo.Context) error {
 				Details: fmt.Sprintf("No survey found with slug '%s'", slug),
 			})
 		}
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to retrieve survey",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to retrieve survey", err)
 	}
 
 	return c.JSON(http.StatusOK, ToSurveyResponse(survey, true))
@@ -198,10 +189,7 @@ func (h *Handlers) ListSurveys(c echo.Context) error {
 
 	surveys, err := h.queries.ListSurveys(c.Request().Context(), limit, offset)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to retrieve surveys",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to retrieve surveys", err)
 	}
 
 	// Convert to list response (without definitions)
@@ -227,10 +215,7 @@ func (h *Handlers) SubmitResponse(c echo.Context) error {
 				Details: fmt.Sprintf("No survey found with slug '%s'", slug),
 			})
 		}
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to retrieve survey",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to retrieve survey", err)
 	}
 
 	// Parse request body
@@ -263,10 +248,7 @@ func (h *Handlers) SubmitResponse(c echo.Context) error {
 		voterSession,
 	)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to check for existing response",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to check for existing response", err)
 	}
 
 	if existingResponse != nil {
@@ -288,10 +270,7 @@ func (h *Handlers) SubmitResponse(c echo.Context) error {
 
 	// Save response
 	if err := h.queries.CreateResponse(c.Request().Context(), response); err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to submit response",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to submit response", err)
 	}
 
 	// Record metrics (no slug label to avoid cardinality explosion)
@@ -319,19 +298,13 @@ func (h *Handlers) GetResults(c echo.Context) error {
 				Details: fmt.Sprintf("No survey found with slug '%s'", slug),
 			})
 		}
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to retrieve survey",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to retrieve survey", err)
 	}
 
 	// Get results
 	results, err := h.queries.GetSurveyResults(c.Request().Context(), survey.ID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error:   "Failed to retrieve results",
-			Details: err.Error(),
-		})
+		return InternalServerError(c, "Failed to retrieve results", err)
 	}
 
 	return c.JSON(http.StatusOK, results)

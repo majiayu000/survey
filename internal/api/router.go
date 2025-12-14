@@ -19,6 +19,7 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 	// Apply middleware to all other routes
 	e.Use(RequestIDMiddleware())
 	e.Use(MetricsMiddleware())
+	e.Use(SecurityHeadersMiddleware())
 	e.Use(otelecho.Middleware("survey-api"))
 
 	// Create session middleware

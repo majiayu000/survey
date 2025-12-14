@@ -367,29 +367,8 @@ func generateSlug(title string) string {
 	return slug
 }
 
-// getClientIP extracts the real client IP from the request
-// Handles X-Forwarded-For header for proxied requests
-func getClientIP(c echo.Context) string {
-	// Check X-Forwarded-For header first
-	xff := c.Request().Header.Get("X-Forwarded-For")
-	if xff != "" {
-		// X-Forwarded-For can contain multiple IPs (client, proxy1, proxy2, ...)
-		// The first IP is the original client
-		ips := strings.Split(xff, ",")
-		if len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
-		}
-	}
-
-	// Fall back to RemoteAddr
-	// RemoteAddr format is "ip:port", so split and take the IP part
-	parts := strings.Split(c.Request().RemoteAddr, ":")
-	if len(parts) > 0 {
-		return parts[0]
-	}
-
-	return c.Request().RemoteAddr
-}
+// getClientIP is now implemented in ip_extraction.go with proper security
+// This function was vulnerable to IP spoofing attacks - see ip_extraction.go for secure implementation
 
 // HTML Handlers
 

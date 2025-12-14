@@ -141,6 +141,24 @@ func (h *Handlers) Login(c echo.Context) error {
 		destination = "/"
 	}
 
+	// Generate state for CSRF protection EARLY (before any network calls that might fail)
+	// Note: GenerateState() panics on crypto error (design choice for unrecoverable errors)
+	state := GenerateState()
+
+	// Set state in cookie for CSRF protection
+	// This prevents attackers from using their own state value with a victim's session
+	// Must be set BEFORE any network calls so tests can verify cookie is set even if resolution fails
+	stateCookie := &http.Cookie{
+		Name:     "oauth_state",
+		Value:    state,
+		Path:     "/oauth",
+		HttpOnly: true,
+		Secure:   true, // HTTPS only
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   600, // 10 minutes (same as OAuth request expiry)
+	}
+	c.SetCookie(stateCookie)
+
 	// Resolve handle → DID
 	did, err := HandleToDID(handle)
 	if err != nil {
@@ -164,10 +182,6 @@ func (h *Handlers) Login(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to resolve PAR endpoint: %v", err))
 	}
-
-	// Generate state for CSRF protection
-	// Note: GenerateState() panics on crypto error (design choice for unrecoverable errors)
-	state := GenerateState()
 
 	// Generate PKCE verifier
 	pkceVerifier := GenerateCodeVerifier()
@@ -233,6 +247,29 @@ func (h *Handlers) Callback(c echo.Context) error {
 	if iss == "" || code == "" || state == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "missing required parameters")
 	}
+
+	// CSRF Protection: Verify state matches the cookie value
+	// This prevents attackers from using their own authorization code with a victim's session
+	stateCookie, err := c.Cookie("oauth_state")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "CSRF detected: missing state cookie")
+	}
+
+	if stateCookie.Value != state {
+		return echo.NewHTTPError(http.StatusBadRequest, "CSRF detected: state mismatch")
+	}
+
+	// Clear the state cookie immediately after validation (single-use)
+	clearStateCookie := &http.Cookie{
+		Name:     "oauth_state",
+		Value:    "",
+		Path:     "/oauth",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1, // Delete cookie
+	}
+	c.SetCookie(clearStateCookie)
 
 	// Look up OAuth request by state
 	oauthReq, err := h.storage.GetOAuthRequest(c.Request().Context(), state)

@@ -1,11 +1,14 @@
 package models
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
@@ -59,8 +62,63 @@ type Option struct {
 	Text string `json:"text"`
 }
 
+// Security limits for YAML bomb protection
+const (
+	MaxSurveyDefinitionSize = 100 * 1024 // 100KB
+	MaxQuestions            = 50
+	MaxOptionsPerQuestion   = 20
+	MaxQuestionTextLength   = 1000
+	MaxOptionTextLength     = 500
+)
+
+// Regex patterns for sanitization (compiled once for performance)
+var (
+	// Matches dangerous HTML tags (script, iframe, object, embed, link, style, img)
+	// Case-insensitive, matches both self-closing and paired tags with any content
+	dangerousTagsRegex = regexp.MustCompile(`(?i)<\s*(script|iframe|object|embed|link|style|img)(\s+[^>]*)?>(.*?)</\s*(script|iframe|object|embed|link|style|img)\s*>|<\s*(script|iframe|object|embed|link|style|img)(\s+[^>]*)?>`)
+)
+
+// SanitizeText removes dangerous HTML tags and control characters from user input
+// This provides defense in depth even though templ auto-escapes output.
+// It strips:
+// - Dangerous HTML tags (script, iframe, img, object, embed, link, style)
+// - Null bytes and harmful control characters (except \n, \t, \r)
+// - Leading/trailing whitespace
+// It preserves:
+// - Normal text with special chars (ampersands, quotes, <, >, etc.)
+// - Legitimate whitespace (newlines, tabs, spaces within text)
+func SanitizeText(input string) string {
+	// Remove dangerous HTML tags
+	sanitized := dangerousTagsRegex.ReplaceAllString(input, "")
+
+	// Remove null bytes and dangerous control characters
+	// Keep only printable characters plus newline, tab, carriage return
+	sanitized = strings.Map(func(r rune) rune {
+		// Allow printable characters
+		if unicode.IsPrint(r) {
+			return r
+		}
+		// Allow newline, tab, carriage return
+		if r == '\n' || r == '\t' || r == '\r' {
+			return r
+		}
+		// Remove all other control characters
+		return -1
+	}, sanitized)
+
+	// Trim leading/trailing whitespace
+	sanitized = strings.TrimSpace(sanitized)
+
+	return sanitized
+}
+
 // ParseSurveyDefinition parses a survey definition from JSON or YAML
 func ParseSurveyDefinition(data []byte) (*SurveyDefinition, error) {
+	// Check input size limit
+	if len(data) > MaxSurveyDefinitionSize {
+		return nil, fmt.Errorf("survey definition too large: %d bytes exceeds maximum of 100KB", len(data))
+	}
+
 	var def SurveyDefinition
 
 	// Try JSON first
@@ -68,8 +126,11 @@ func ParseSurveyDefinition(data []byte) (*SurveyDefinition, error) {
 		return &def, nil
 	}
 
-	// Try YAML
-	if err := yaml.Unmarshal(data, &def); err != nil {
+	// Try YAML with strict unmarshaling
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true) // Reject unknown fields
+
+	if err := decoder.Decode(&def); err != nil {
 		return nil, fmt.Errorf("failed to parse as JSON or YAML: %w", err)
 	}
 
@@ -80,6 +141,11 @@ func ParseSurveyDefinition(data []byte) (*SurveyDefinition, error) {
 func (d *SurveyDefinition) ValidateDefinition() error {
 	if len(d.Questions) == 0 {
 		return errors.New("survey must have at least one question")
+	}
+
+	// Check total question count
+	if len(d.Questions) > MaxQuestions {
+		return fmt.Errorf("too many questions: %d exceeds maximum of 50", len(d.Questions))
 	}
 
 	questionIDs := make(map[string]bool)
@@ -96,9 +162,17 @@ func (d *SurveyDefinition) ValidateDefinition() error {
 		}
 		questionIDs[q.ID] = true
 
-		// Validate question text
-		if q.Text == "" {
+		// Sanitize question text
+		d.Questions[i].Text = SanitizeText(q.Text)
+
+		// Validate question text (after sanitization)
+		if d.Questions[i].Text == "" {
 			return fmt.Errorf("question %d: question text is required", i)
+		}
+
+		// Check question text length
+		if len(d.Questions[i].Text) > MaxQuestionTextLength {
+			return fmt.Errorf("question %d: question text too long: %d characters exceeds maximum of 1000", i, len(d.Questions[i].Text))
 		}
 
 		// Validate question type
@@ -112,14 +186,30 @@ func (d *SurveyDefinition) ValidateDefinition() error {
 				return fmt.Errorf("question %d: choice questions must have at least 2 options", i)
 			}
 
+			// Check option count
+			if len(q.Options) > MaxOptionsPerQuestion {
+				return fmt.Errorf("question %d: too many options: %d exceeds maximum of 20", i, len(q.Options))
+			}
+
 			optionIDs := make(map[string]bool)
 			for j, opt := range q.Options {
 				if opt.ID == "" {
 					return fmt.Errorf("question %d, option %d: option ID is required", i, j)
 				}
-				if opt.Text == "" {
+
+				// Sanitize option text
+				d.Questions[i].Options[j].Text = SanitizeText(opt.Text)
+
+				// Validate option text (after sanitization)
+				if d.Questions[i].Options[j].Text == "" {
 					return fmt.Errorf("question %d, option %d: option text is required", i, j)
 				}
+
+				// Check option text length
+				if len(d.Questions[i].Options[j].Text) > MaxOptionTextLength {
+					return fmt.Errorf("question %d, option %d: option text too long: %d characters exceeds maximum of 500", i, j, len(d.Questions[i].Options[j].Text))
+				}
+
 				if optionIDs[opt.ID] {
 					return fmt.Errorf("question %d: duplicate option ID '%s'", i, opt.ID)
 				}

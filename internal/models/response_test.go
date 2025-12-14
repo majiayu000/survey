@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGenerateVoterSession(t *testing.T) {
@@ -322,4 +323,53 @@ func TestAnswerStruct(t *testing.T) {
 		Text:            "My text answer",
 	}
 	assert.Equal(t, "My text answer", textAnswer.Text)
+}
+
+// Text Answer Sanitization Tests
+
+func TestValidateAnswers_SanitizesTextAnswers(t *testing.T) {
+	def := &SurveyDefinition{
+		Questions: []Question{
+			{
+				ID:       "q1",
+				Text:     "What are your thoughts?",
+				Type:     QuestionTypeText,
+				Required: true,
+			},
+		},
+		Anonymous: false,
+	}
+
+	answers := map[string]Answer{
+		"q1": {Text: "<script>alert('xss')</script>This is my answer"},
+	}
+
+	err := ValidateAnswers(def, answers)
+	require.NoError(t, err)
+
+	// Text answer should be sanitized
+	assert.Equal(t, "This is my answer", answers["q1"].Text)
+}
+
+func TestValidateAnswers_RejectsEmptyTextAfterSanitization(t *testing.T) {
+	def := &SurveyDefinition{
+		Questions: []Question{
+			{
+				ID:       "q1",
+				Text:     "What are your thoughts?",
+				Type:     QuestionTypeText,
+				Required: true,
+			},
+		},
+		Anonymous: false,
+	}
+
+	// Only script tag, which will be sanitized to empty string
+	answers := map[string]Answer{
+		"q1": {Text: "<script>alert('xss')</script>"},
+	}
+
+	err := ValidateAnswers(def, answers)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "text answer is required")
 }

@@ -1,9 +1,7 @@
 package api
 
 import (
-	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -87,26 +85,9 @@ func (rl *IPRateLimiter) cleanup() {
 }
 
 // getIP extracts the IP address from the request
-// Priority: X-Forwarded-For header, then RemoteAddr
+// Uses the secure getClientIP function from ip_extraction.go
 func getIP(c echo.Context) string {
-	// Check X-Forwarded-For header (proxy/load balancer)
-	forwarded := c.Request().Header.Get("X-Forwarded-For")
-	if forwarded != "" {
-		// X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
-		// We want the leftmost (original client) IP
-		ips := strings.Split(forwarded, ",")
-		if len(ips) > 0 {
-			clientIP := strings.TrimSpace(ips[0])
-			return clientIP
-		}
-	}
-
-	// Fall back to RemoteAddr
-	ip, _, err := net.SplitHostPort(c.Request().RemoteAddr)
-	if err != nil {
-		return c.Request().RemoteAddr
-	}
-	return ip
+	return getClientIP(c)
 }
 
 // Middleware returns an Echo middleware function that enforces rate limiting

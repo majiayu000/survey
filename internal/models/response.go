@@ -79,6 +79,8 @@ func ValidateAnswers(def *SurveyDefinition, answers map[string]Answer) error {
 			if err := validateTextAnswer(&question, &answer); err != nil {
 				return fmt.Errorf("question '%s': %w", question.ID, err)
 			}
+			// Write back the sanitized answer
+			answers[question.ID] = answer
 		}
 	}
 
@@ -123,6 +125,10 @@ func validateMultiChoice(question *Question, answer *Answer) error {
 }
 
 func validateTextAnswer(question *Question, answer *Answer) error {
+	// Sanitize text answer
+	answer.Text = SanitizeText(answer.Text)
+
+	// Validate after sanitization
 	if question.Required && answer.Text == "" {
 		return errors.New("text answer is required")
 	}

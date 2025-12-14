@@ -656,10 +656,10 @@ func TestGetClientIP(t *testing.T) {
 			expected:   "192.168.1.1",
 		},
 		{
-			name:          "behind proxy",
+			name:          "behind proxy - rightmost untrusted IP",
 			remoteAddr:    "10.0.0.1:12345",
 			xForwardedFor: "203.0.113.1, 198.51.100.1",
-			expected:      "203.0.113.1",
+			expected:      "198.51.100.1", // Uses rightmost untrusted IP (more secure)
 		},
 		{
 			name:          "single proxy",

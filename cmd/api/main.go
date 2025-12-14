@@ -78,6 +78,12 @@ func main() {
 		log.Printf("Support URL configured: %s", supportURL)
 	}
 
+	// Set PostHog API key from environment
+	if posthogKey := os.Getenv("POSTHOG_API_KEY"); posthogKey != "" {
+		handlers.SetPostHogKey(posthogKey)
+		log.Printf("PostHog analytics enabled")
+	}
+
 	// Create OAuth handlers (optional - requires OAUTH_SECRET_JWK_B64 and SERVER_HOST env vars)
 	var oauthHandlers *oauth.Handlers
 	secretJWKB64 := os.Getenv("OAUTH_SECRET_JWK_B64")

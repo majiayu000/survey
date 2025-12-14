@@ -2,8 +2,8 @@ package templates
 
 import "github.com/openmeet-team/survey/internal/oauth"
 
-templ CreateSurvey(user *oauth.User, profile *oauth.Profile) {
-	@Layout("Create Survey", user, profile) {
+templ CreateSurvey(user *oauth.User, profile *oauth.Profile, posthogKey string) {
+	@Layout("Create Survey", user, profile, posthogKey) {
 		<div class="card">
 			<h1>Create New Survey</h1>
 			<p style="color: #7f8c8d; margin-bottom: 2rem;">

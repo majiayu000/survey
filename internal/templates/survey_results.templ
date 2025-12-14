@@ -6,8 +6,8 @@ import (
 	"github.com/openmeet-team/survey/internal/oauth"
 )
 
-templ SurveyResults(survey *models.Survey, results *models.SurveyResults, user *oauth.User, profile *oauth.Profile) {
-	@Layout(survey.Title + " - Results", user, profile) {
+templ SurveyResults(survey *models.Survey, results *models.SurveyResults, user *oauth.User, profile *oauth.Profile, posthogKey string) {
+	@Layout(survey.Title + " - Results", user, profile, posthogKey) {
 		<div class="card">
 			<h1>{ survey.Title }</h1>
 			<p style="color: #7f8c8d; margin-bottom: 2rem;">

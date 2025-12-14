@@ -1100,3 +1100,131 @@ func TestListSurveys_APIRouteNotFound(t *testing.T) {
 	// Should return 404 Not Found (route removed for security)
 	assert.Equal(t, http.StatusNotFound, rec.Code, "GET /api/v1/surveys route should not exist")
 }
+
+// RED PHASE: Test PostHog script is included when key is configured
+func TestLandingPage_PostHogScriptIncluded(t *testing.T) {
+	e, mq, h := setupTest()
+
+	// Set PostHog API key
+	h.SetPostHogKey("phc_TestAPIKey123")
+
+	// Create test data
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "test-survey",
+		Title: "Test Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Test",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Request landing page
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.LandingPage(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	assert.Contains(t, body, "posthog.init", "Should include PostHog initialization")
+	assert.Contains(t, body, "phc_TestAPIKey123", "Should include API key")
+	assert.Contains(t, body, "https://us.i.posthog.com", "Should use correct API host")
+}
+
+// RED PHASE: Test PostHog script is NOT included when key is not configured
+func TestLandingPage_PostHogScriptNotIncludedWhenKeyMissing(t *testing.T) {
+	e, mq, h := setupTest()
+
+	// Do NOT set PostHog API key (h.posthogKey should be empty)
+
+	// Create test data
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "test-survey",
+		Title: "Test Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Test",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Request landing page
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.LandingPage(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	assert.NotContains(t, body, "posthog.init", "Should NOT include PostHog when key is missing")
+	assert.NotContains(t, body, "posthog-js", "Should NOT include PostHog script when key is missing")
+}
+
+// RED PHASE: Test PostHog included in survey form page
+func TestGetSurveyHTML_PostHogScriptIncluded(t *testing.T) {
+	e, mq, h := setupTest()
+
+	// Set PostHog API key
+	h.SetPostHogKey("phc_TestAPIKey123")
+
+	// Create survey
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "test-survey",
+		Title: "Test Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Test",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Request survey page
+	req := httptest.NewRequest(http.MethodGet, "/surveys/test-survey", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("slug")
+	c.SetParamValues("test-survey")
+
+	err := h.GetSurveyHTML(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	assert.Contains(t, body, "posthog.init", "Should include PostHog initialization")
+	assert.Contains(t, body, "phc_TestAPIKey123", "Should include API key")
+}

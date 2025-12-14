@@ -39,6 +39,7 @@ type Handlers struct {
 	queries      QueriesInterface
 	oauthStorage *oauth.Storage
 	supportURL   string
+	posthogKey   string
 }
 
 // NewHandlers creates a new Handlers instance
@@ -62,6 +63,11 @@ func NewHandlersWithOAuth(q QueriesInterface, oauthStorage *oauth.Storage) *Hand
 // SetSupportURL sets the support URL for the handlers
 func (h *Handlers) SetSupportURL(url string) {
 	h.supportURL = url
+}
+
+// SetPostHogKey sets the PostHog API key for analytics
+func (h *Handlers) SetPostHogKey(key string) {
+	h.posthogKey = key
 }
 
 // CreateSurvey creates a new survey
@@ -362,7 +368,7 @@ func (h *Handlers) GetSurveyHTML(c echo.Context) error {
 	user, profile := getUserAndProfile(c)
 
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.SurveyForm(survey, user, profile)
+	component := templates.SurveyForm(survey, user, profile, h.posthogKey)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -373,7 +379,7 @@ func (h *Handlers) CreateSurveyPageHTML(c echo.Context) error {
 	user, profile := getUserAndProfile(c)
 
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.CreateSurvey(user, profile)
+	component := templates.CreateSurvey(user, profile, h.posthogKey)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -699,7 +705,7 @@ func (h *Handlers) GetResultsHTML(c echo.Context) error {
 	user, profile := getUserAndProfile(c)
 
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.SurveyResults(survey, results, user, profile)
+	component := templates.SurveyResults(survey, results, user, profile, h.posthogKey)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -925,7 +931,7 @@ func (h *Handlers) LandingPage(c echo.Context) error {
 	user, profile := getUserAndProfile(c)
 
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.LandingPage(stats, user, profile, h.supportURL)
+	component := templates.LandingPage(stats, user, profile, h.supportURL, h.posthogKey)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -943,7 +949,7 @@ func (h *Handlers) MyDataHTML(c echo.Context) error {
 
 	// Render overview page
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.MyDataPage(user, profile)
+	component := templates.MyDataPage(user, profile, h.posthogKey)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -987,7 +993,7 @@ func (h *Handlers) MyDataCollectionHTML(c echo.Context) error {
 
 	// Render collection page
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.MyDataCollectionPage(user, profile, collection, records.Records, records.Cursor)
+	component := templates.MyDataCollectionPage(user, profile, collection, records.Records, records.Cursor, h.posthogKey)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 
@@ -1044,7 +1050,7 @@ func (h *Handlers) MyDataRecordHTML(c echo.Context) error {
 
 	// Render record edit page
 	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.MyDataRecordPage(user, profile, collection, record)
+	component := templates.MyDataRecordPage(user, profile, collection, record, h.posthogKey)
 	return component.Render(c.Request().Context(), c.Response().Writer)
 }
 

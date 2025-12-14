@@ -6,8 +6,8 @@ import (
 )
 
 // MyDataPage shows the overview of user's PDS data
-templ MyDataPage(user *oauth.User, profile *oauth.Profile) {
-	@Layout("My Data", user, profile) {
+templ MyDataPage(user *oauth.User, profile *oauth.Profile, posthogKey string) {
+	@Layout("My Data", user, profile, posthogKey) {
 		<div class="card">
 			<h1>My Data</h1>
 			<p>Browse and manage your ATProto PDS records.</p>
@@ -37,8 +37,8 @@ templ MyDataPage(user *oauth.User, profile *oauth.Profile) {
 }
 
 // MyDataCollectionPage displays records from a specific collection
-templ MyDataCollectionPage(user *oauth.User, profile *oauth.Profile, collection string, records []oauth.PDSRecord, cursor string) {
-	@Layout(fmt.Sprintf("My Data - %s", collection), user, profile) {
+templ MyDataCollectionPage(user *oauth.User, profile *oauth.Profile, collection string, records []oauth.PDSRecord, cursor string, posthogKey string) {
+	@Layout(fmt.Sprintf("My Data - %s", collection), user, profile, posthogKey) {
 		<div class="card">
 			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
 				<h1>{ collection }</h1>
@@ -108,8 +108,8 @@ templ MyDataCollectionPage(user *oauth.User, profile *oauth.Profile, collection 
 }
 
 // MyDataRecordPage displays a single record for editing
-templ MyDataRecordPage(user *oauth.User, profile *oauth.Profile, collection string, record *oauth.PDSRecord) {
-	@Layout(fmt.Sprintf("Edit Record - %s", record.RKey), user, profile) {
+templ MyDataRecordPage(user *oauth.User, profile *oauth.Profile, collection string, record *oauth.PDSRecord, posthogKey string) {
+	@Layout(fmt.Sprintf("Edit Record - %s", record.RKey), user, profile, posthogKey) {
 		<div class="card">
 			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
 				<h1>Edit Record</h1>

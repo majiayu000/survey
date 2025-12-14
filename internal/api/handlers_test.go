@@ -23,6 +23,7 @@ import (
 // MockQueries implements a mock version of db.Queries for testing
 type MockQueries struct {
 	surveys         map[string]*models.Survey
+	surveysByURI    map[string]*models.Survey // URI -> survey
 	slugs           map[string]bool
 	responses       map[uuid.UUID]*models.Response
 	responsesBySurvey map[uuid.UUID]map[string]*models.Response // surveyID -> voterSession -> response
@@ -31,6 +32,7 @@ type MockQueries struct {
 func NewMockQueries() *MockQueries {
 	return &MockQueries{
 		surveys:           make(map[string]*models.Survey),
+		surveysByURI:      make(map[string]*models.Survey),
 		slugs:             make(map[string]bool),
 		responses:         make(map[uuid.UUID]*models.Response),
 		responsesBySurvey: make(map[uuid.UUID]map[string]*models.Response),
@@ -40,12 +42,22 @@ func NewMockQueries() *MockQueries {
 func (m *MockQueries) CreateSurvey(ctx context.Context, s *models.Survey) error {
 	m.surveys[s.Slug] = s
 	m.slugs[s.Slug] = true
+	if s.URI != nil {
+		m.surveysByURI[*s.URI] = s
+	}
 	m.responsesBySurvey[s.ID] = make(map[string]*models.Response)
 	return nil
 }
 
 func (m *MockQueries) GetSurveyBySlug(ctx context.Context, slug string) (*models.Survey, error) {
 	if s, ok := m.surveys[slug]; ok {
+		return s, nil
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (m *MockQueries) GetSurveyByURI(ctx context.Context, uri string) (*models.Survey, error) {
+	if s, ok := m.surveysByURI[uri]; ok {
 		return s, nil
 	}
 	return nil, sql.ErrNoRows
@@ -1227,4 +1239,118 @@ func TestGetSurveyHTML_PostHogScriptIncluded(t *testing.T) {
 	body := rec.Body.String()
 	assert.Contains(t, body, "posthog.init", "Should include PostHog initialization")
 	assert.Contains(t, body, "phc_TestAPIKey123", "Should include API key")
+}
+
+// RED PHASE: Short URL Routes
+
+func TestShortSlugURL_RedirectsToSurvey(t *testing.T) {
+	e, mq, h := setupTest()
+
+	// Create a test survey
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "dev-feedback",
+		Title: "Developer Feedback",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "How satisfied are you?",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "satisfied", Text: "Satisfied"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Request short URL
+	req := httptest.NewRequest(http.MethodGet, "/s/dev-feedback", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("slug")
+	c.SetParamValues("dev-feedback")
+
+	err := h.ShortSlugURL(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusSeeOther, rec.Code)
+	assert.Equal(t, "/surveys/dev-feedback", rec.Header().Get("Location"))
+}
+
+func TestShortSlugURL_NotFound(t *testing.T) {
+	e, _, h := setupTest()
+
+	// Request non-existent survey
+	req := httptest.NewRequest(http.MethodGet, "/s/nonexistent", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("slug")
+	c.SetParamValues("nonexistent")
+
+	err := h.ShortSlugURL(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestATProtoURL_RedirectsToSurvey(t *testing.T) {
+	e, mq, h := setupTest()
+
+	// Create a test survey with URI
+	did := "did:plc:xyz123"
+	rkey := "3ldhxa7k2ze2s"
+	uri := fmt.Sprintf("at://%s/net.openmeet.survey/%s", did, rkey)
+
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		URI:   &uri,
+		Slug:  "atproto-survey",
+		Title: "ATProto Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Test question",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Request AT URI short URL
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/at/%s/%s", did, rkey), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("did", "rkey")
+	c.SetParamValues(did, rkey)
+
+	err := h.ATProtoURL(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusSeeOther, rec.Code)
+	assert.Equal(t, "/surveys/atproto-survey", rec.Header().Get("Location"))
+}
+
+func TestATProtoURL_NotFound(t *testing.T) {
+	e, _, h := setupTest()
+
+	// Request non-existent AT URI
+	did := "did:plc:nonexistent"
+	rkey := "notfound123"
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/at/%s/%s", did, rkey), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("did", "rkey")
+	c.SetParamValues(did, rkey)
+
+	err := h.ATProtoURL(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }

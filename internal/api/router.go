@@ -64,6 +64,10 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 	// HTML routes (Templ handlers) - with session middleware
 	web := e.Group("", sessionMiddleware)
 
+	// Short URL routes with rate limiting
+	web.GET("/s/:slug", h.ShortSlugURL, rateLimiters.GeneralAPI.Middleware())
+	web.GET("/at/:did/:rkey", h.ATProtoURL, rateLimiters.GeneralAPI.Middleware())
+
 	// Survey creation with rate limiting and body limits
 	web.GET("/surveys/new", h.CreateSurveyPageHTML, rateLimiters.GeneralAPI.Middleware())
 	web.POST("/surveys", h.CreateSurveyHTML, rateLimiters.SurveyCreation.Middleware(), NewBodyLimitMiddleware(bodyLimits.SurveyCreation))

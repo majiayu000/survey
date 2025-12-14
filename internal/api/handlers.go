@@ -25,6 +25,7 @@ import (
 type QueriesInterface interface {
 	CreateSurvey(ctx context.Context, s *models.Survey) error
 	GetSurveyBySlug(ctx context.Context, slug string) (*models.Survey, error)
+	GetSurveyByURI(ctx context.Context, uri string) (*models.Survey, error)
 	ListSurveys(ctx context.Context, limit, offset int) ([]*models.Survey, error)
 	SlugExists(ctx context.Context, slug string) (bool, error)
 	CreateResponse(ctx context.Context, r *models.Response) error
@@ -1097,6 +1098,46 @@ func (h *Handlers) UpdateRecordHTML(c echo.Context) error {
 
 	// Redirect back to collection view
 	return c.Redirect(http.StatusSeeOther, "/my-data/"+collection)
+}
+
+// ShortSlugURL provides a short URL redirect to survey by slug
+// GET /s/:slug
+func (h *Handlers) ShortSlugURL(c echo.Context) error {
+	slug := c.Param("slug")
+
+	// Verify survey exists
+	survey, err := h.queries.GetSurveyBySlug(c.Request().Context(), slug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "Survey not found")
+		}
+		return InternalServerError(c, "Failed to retrieve survey", err)
+	}
+
+	// Redirect to full survey URL
+	return c.Redirect(http.StatusSeeOther, "/surveys/"+survey.Slug)
+}
+
+// ATProtoURL provides canonical AT Protocol URL redirect
+// GET /at/:did/:rkey
+func (h *Handlers) ATProtoURL(c echo.Context) error {
+	did := c.Param("did")
+	rkey := c.Param("rkey")
+
+	// Construct AT URI
+	uri := fmt.Sprintf("at://%s/net.openmeet.survey/%s", did, rkey)
+
+	// Look up survey by URI
+	survey, err := h.queries.GetSurveyByURI(c.Request().Context(), uri)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "Survey not found")
+		}
+		return InternalServerError(c, "Failed to retrieve survey", err)
+	}
+
+	// Redirect to survey by slug
+	return c.Redirect(http.StatusSeeOther, "/surveys/"+survey.Slug)
 }
 
 // DeleteRecordsHTML deletes multiple records via form submission

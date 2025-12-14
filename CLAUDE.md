@@ -198,18 +198,30 @@ templ SomePage(data *SomeData, user *oauth.User, profile *oauth.Profile) {
 
 ## Key Routes
 
+### HTML Routes (Web UI)
+
 | Route | Handler | Description |
 |-------|---------|-------------|
 | `GET /` | `LandingPage` | Landing with live stats |
-| `GET /surveys` | `ListSurveysHTML` | Survey list |
 | `GET /surveys/new` | `CreateSurveyPageHTML` | Create form |
 | `POST /surveys` | `CreateSurveyHTML` | Submit new survey |
-| `GET /surveys/:slug` | `SurveyFormHTML` | Answer survey |
+| `GET /surveys/:slug` | `SurveyFormHTML` | Answer survey (via direct link) |
 | `GET /surveys/:slug/results` | `SurveyResultsHTML` | View results |
 | `GET /my-data` | `MyDataHTML` | PDS browser overview |
 | `GET /my-data/:collection` | `MyDataCollectionHTML` | List collection records |
 | `GET /my-data/:collection/:rkey` | `MyDataRecordHTML` | Edit single record |
 | `POST /my-data/delete` | `DeleteRecordsHTML` | Batch delete records |
+
+### JSON API Routes
+
+| Route | Handler | Description |
+|-------|---------|-------------|
+| `POST /api/v1/surveys` | `CreateSurvey` | Create new survey (JSON) |
+| `GET /api/v1/surveys/:slug` | `GetSurvey` | Get survey by slug (JSON) |
+| `POST /api/v1/surveys/:slug/responses` | `SubmitResponse` | Submit response (JSON) |
+| `GET /api/v1/surveys/:slug/results` | `GetResults` | Get results (JSON) |
+
+**Security Note:** The public survey list endpoints (`GET /surveys` and `GET /api/v1/surveys`) have been removed. Surveys are only accessible via direct link (`/surveys/:slug`) to prevent random users from discovering all surveys.
 
 ## Anonymous vs Authenticated Voting
 

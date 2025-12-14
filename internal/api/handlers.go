@@ -345,31 +345,6 @@ func generateSlug(title string) string {
 
 // HTML Handlers
 
-// ListSurveysHTML renders the survey list page
-// GET /surveys
-func (h *Handlers) ListSurveysHTML(c echo.Context) error {
-	surveys, err := h.queries.ListSurveys(c.Request().Context(), 100, 0)
-	if err != nil {
-		return c.String(http.StatusInternalServerError, "Failed to load surveys")
-	}
-
-	// Get response counts for each survey
-	counts := make(map[string]int)
-	for _, survey := range surveys {
-		results, err := h.queries.GetSurveyResults(c.Request().Context(), survey.ID)
-		if err == nil {
-			counts[survey.Slug] = results.TotalVotes
-		}
-	}
-
-	// Get user and profile from context
-	user, profile := getUserAndProfile(c)
-
-	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
-	component := templates.SurveyList(surveys, counts, user, profile)
-	return component.Render(c.Request().Context(), c.Response().Writer)
-}
-
 // GetSurveyHTML renders the survey form page
 // GET /surveys/:slug
 func (h *Handlers) GetSurveyHTML(c echo.Context) error {

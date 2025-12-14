@@ -55,7 +55,6 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 
 	// Survey management with rate limiting and body limits
 	api.POST("/surveys", h.CreateSurvey, rateLimiters.SurveyCreation.Middleware(), NewBodyLimitMiddleware(bodyLimits.SurveyCreation))
-	api.GET("/surveys", h.ListSurveys, rateLimiters.GeneralAPI.Middleware())
 	api.GET("/surveys/:slug", h.GetSurvey, rateLimiters.GeneralAPI.Middleware())
 
 	// Response submission and results with rate limiting and body limits
@@ -65,8 +64,7 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 	// HTML routes (Templ handlers) - with session middleware
 	web := e.Group("", sessionMiddleware)
 
-	// Survey list and creation with rate limiting and body limits
-	web.GET("/surveys", h.ListSurveysHTML, rateLimiters.GeneralAPI.Middleware())
+	// Survey creation with rate limiting and body limits
 	web.GET("/surveys/new", h.CreateSurveyPageHTML, rateLimiters.GeneralAPI.Middleware())
 	web.POST("/surveys", h.CreateSurveyHTML, rateLimiters.SurveyCreation.Middleware(), NewBodyLimitMiddleware(bodyLimits.SurveyCreation))
 

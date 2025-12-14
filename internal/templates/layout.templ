@@ -170,7 +170,6 @@ templ Layout(title string, user *oauth.User, profile *oauth.Profile) {
 			<div class="container">
 				<h1><a href="/">OpenMeet Survey</a></h1>
 				<ul>
-					<li><a href="/surveys">All Surveys</a></li>
 					<li><a href="/surveys/new">Create Survey</a></li>
 					if user != nil && profile != nil {
 						<li><a href="/my-data">My Data</a></li>

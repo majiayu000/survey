@@ -121,18 +121,12 @@ anonymous: false
 	assert.Equal(t, "What is your favorite color?", createResp.Title)
 	assert.Len(t, createResp.Definition.Questions, 1)
 
-	// Step 2: GET /api/v1/surveys - verify survey appears in list
+	// Step 2: Verify survey list endpoint is removed (returns 404)
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/surveys", nil)
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var listResp []SurveyListResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &listResp)
-	require.NoError(t, err)
-	assert.Len(t, listResp, 1)
-	assert.Equal(t, "favorite-color", listResp[0].Slug)
+	assert.Equal(t, http.StatusNotFound, rec.Code, "Survey list endpoint should be removed")
 
 	// Step 3: GET /api/v1/surveys/:slug - verify full survey returned
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/surveys/favorite-color", nil)

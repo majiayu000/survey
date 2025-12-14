@@ -367,34 +367,11 @@ func TestGetSurvey_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestListSurveys_Success(t *testing.T) {
-	e, mq, h := setupTest()
-
-	// Create multiple surveys
-	for i := 1; i <= 3; i++ {
-		survey := &models.Survey{
-			ID:        uuid.New(),
-			Slug:      "survey-" + string(rune(i)),
-			Title:     "Survey " + string(rune(i)),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-		mq.CreateSurvey(context.Background(), survey)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/surveys?limit=10&offset=0", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	err := h.ListSurveys(c)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var surveys []SurveyListResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &surveys)
-	require.NoError(t, err)
-	assert.Len(t, surveys, 3)
-}
+// TestListSurveys_Success - REMOVED
+// The ListSurveys handler and route have been removed for security reasons.
+// Surveys should only be accessible via direct link (/surveys/:slug), not via a public list.
+// The handler code is kept for potential future use (e.g., authenticated admin panel),
+// but the route is not exposed.
 
 func TestSubmitResponse_Success(t *testing.T) {
 	e, mq, h := setupTest()
@@ -987,7 +964,8 @@ func TestLandingPageHTML_Success(t *testing.T) {
 	assert.Contains(t, body, "Welcome", "Should contain welcome message")
 	assert.Contains(t, body, "1", "Should show survey count")
 	assert.Contains(t, body, "Create Survey", "Should have CTA button")
-	assert.Contains(t, body, "Browse Surveys", "Should have browse button")
+	// Browse Surveys button removed - surveys only accessible via direct link
+	assert.NotContains(t, body, "Browse Surveys", "Browse button should be removed")
 }
 
 // RED PHASE: Test MyData handlers require authentication
@@ -1065,4 +1043,60 @@ func TestDeleteRecordsHTML_RequiresAuth(t *testing.T) {
 	err := h.DeleteRecordsHTML(c)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+// RED PHASE: Test that ListSurveysHTML route should not exist
+// This test ensures the public survey list page is removed for security
+func TestListSurveysHTML_RouteNotFound(t *testing.T) {
+	e, mq, h := setupTest()
+	hh := &HealthHandlers{}
+
+	// Setup routes (this will include the route we want to remove)
+	SetupRoutes(e, h, hh, nil, nil)
+
+	// Create a survey
+	survey := &models.Survey{
+		ID:        uuid.New(),
+		Slug:      "test-survey",
+		Title:     "Test Survey",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Try to access the HTML survey list page
+	req := httptest.NewRequest(http.MethodGet, "/surveys", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	// Should return 404 Not Found (route removed for security)
+	assert.Equal(t, http.StatusNotFound, rec.Code, "GET /surveys HTML route should not exist")
+}
+
+// RED PHASE: Test that ListSurveys JSON API route should not exist
+// This test ensures the public survey list JSON API is removed for security
+func TestListSurveys_APIRouteNotFound(t *testing.T) {
+	e, mq, h := setupTest()
+	hh := &HealthHandlers{}
+
+	// Setup routes
+	SetupRoutes(e, h, hh, nil, nil)
+
+	// Create a survey
+	survey := &models.Survey{
+		ID:        uuid.New(),
+		Slug:      "test-survey",
+		Title:     "Test Survey",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Try to access the JSON API survey list
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/surveys", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	// Should return 404 Not Found (route removed for security)
+	assert.Equal(t, http.StatusNotFound, rec.Code, "GET /api/v1/surveys route should not exist")
 }

@@ -15,8 +15,10 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/openmeet-team/survey/internal/api"
 	"github.com/openmeet-team/survey/internal/db"
+	"github.com/openmeet-team/survey/internal/generator"
 	"github.com/openmeet-team/survey/internal/oauth"
 	"github.com/openmeet-team/survey/internal/telemetry"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
 func main() {
@@ -68,8 +70,32 @@ func main() {
 	cleanupCtx, cancelCleanup := context.WithCancel(ctx)
 	go oauth.StartCleanupWorker(cleanupCtx, oauthStorage, 1*time.Hour)
 
-	// Create handlers with OAuth storage for PDS writes
+	// Initialize AI survey generator if OpenAI API key is configured
+	var surveyGenerator *generator.SurveyGenerator
+	var generatorRateLimiter *generator.RateLimiter
+	openaiKey := os.Getenv("OPENAI_API_KEY")
+	if openaiKey != "" {
+		modelName := "gpt-4o-mini"
+		llm, err := openai.New(
+			openai.WithToken(openaiKey),
+			openai.WithModel(modelName),
+		)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize OpenAI client: %v", err)
+		} else {
+			surveyGenerator = generator.NewSurveyGenerator(llm, modelName)
+			generatorRateLimiter = generator.NewRateLimiter()
+			log.Println("AI survey generation enabled with model: " + modelName)
+		}
+	} else {
+		log.Println("AI survey generation disabled (OPENAI_API_KEY not configured)")
+	}
+
+	// Create handlers with OAuth storage and optional AI generator
 	handlers := api.NewHandlersWithOAuth(queries, oauthStorage)
+	if surveyGenerator != nil && generatorRateLimiter != nil {
+		handlers.SetGenerator(surveyGenerator, generatorRateLimiter)
+	}
 	healthHandlers := api.NewHealthHandlers(database)
 
 	// Set support URL from environment

@@ -81,6 +81,24 @@ PDS writes require DPoP (Demonstration of Proof-of-Possession):
 | Authenticated (DID) | `voter_did` | User's PDS + local DB |
 | Anonymous | `voter_session` (SHA256 hash) | Local DB only |
 
+## AI Generation Patterns
+
+### Generator Usage
+
+The `generator` package wraps langchaingo's LLM interface with built-in validation, sanitization, and cost limiting. Initialize with any langchaingo-compatible LLM (OpenAI, Anthropic, Ollama, etc.) and call `Generate(ctx, prompt)`. The generator automatically validates input, calls the LLM, sanitizes output, validates against schema, and checks cost limits.
+
+### Handler Pattern
+
+AI generation handlers should: check consent checkbox, apply rate limits (DID-based for authenticated, IP-based for anonymous), time the generation call, record Prometheus metrics (duration, tokens, cost, status), and return specific error responses for rate limiting, budget exceeded, and validation failures.
+
+### Testing
+
+Use langchaingo's `fake.NewFakeLLM()` to return canned JSON responses without making real API calls. This works for both unit tests and integration tests.
+
+### Metrics
+
+Always instrument AI endpoints with five metric types: `survey_ai_generations_total` (with status labels), `survey_ai_generation_duration_seconds`, `survey_ai_tokens_total` (input/output labels), `survey_ai_daily_cost_usd`, and `survey_ai_rate_limit_hits_total` (user_type labels). Record metrics immediately after generation attempt, before returning response.
+
 ## Gotchas
 
 **Template changes not showing:** Run `make templ` after editing `.templ` files.
@@ -94,3 +112,5 @@ PDS writes require DPoP (Demonstration of Proof-of-Possession):
 **JSON in templates:** Use `record.ValueJSON` not `fmt.Sprintf("%v", record.Value)`.
 
 **List endpoints removed:** `GET /api/v1/surveys` returns 404 intentionally. Access surveys via `/surveys/:slug` only.
+
+**AI generation disabled:** If `OPENAI_API_KEY` is not set, `/api/v1/surveys/generate` returns 503. This is expected - AI is optional.

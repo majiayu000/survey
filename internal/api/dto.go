@@ -100,3 +100,18 @@ func ToSurveyListResponse(s *models.Survey) *SurveyListResponse {
 		UpdatedAt:   s.UpdatedAt,
 	}
 }
+
+// GenerateSurveyRequest for AI survey generation
+type GenerateSurveyRequest struct {
+	Description  string `json:"description"`
+	ExistingJSON string `json:"existing_json,omitempty"`
+	Consent      bool   `json:"consent"`
+}
+
+// GenerateSurveyResponse from AI generation
+type GenerateSurveyResponse struct {
+	Definition   *models.SurveyDefinition `json:"definition"`
+	TokensUsed   int                      `json:"tokens_used"`
+	Cost         float64                  `json:"cost"`
+	NeedsCaptcha bool                     `json:"needs_captcha,omitempty"`
+}

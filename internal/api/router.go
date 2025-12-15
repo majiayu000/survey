@@ -59,6 +59,7 @@ func SetupRoutes(e *echo.Echo, h *Handlers, hh *HealthHandlers, oh *oauth.Handle
 	// Survey management with rate limiting and body limits
 	api.POST("/surveys", h.CreateSurvey, rateLimiters.SurveyCreation.Middleware(), NewBodyLimitMiddleware(bodyLimits.SurveyCreation))
 	api.GET("/surveys/:slug", h.GetSurvey, rateLimiters.GeneralAPI.Middleware())
+	api.POST("/surveys/generate", h.GenerateSurvey, rateLimiters.SurveyCreation.Middleware())
 
 	// Response submission and results with rate limiting and body limits
 	api.POST("/surveys/:slug/responses", h.SubmitResponse, rateLimiters.VoteSubmission.Middleware(), NewBodyLimitMiddleware(bodyLimits.ResponseSubmission))

@@ -7,8 +7,60 @@ templ CreateSurvey(user *oauth.User, profile *oauth.Profile, posthogKey string) 
 		<div class="card">
 			<h1>Create New Survey</h1>
 			<p style="color: #7f8c8d; margin-bottom: 2rem;">
-				Define your survey using YAML or JSON format below. The editor provides autocomplete (Ctrl+Space) and real-time validation.
+				Use AI to generate a survey from your description, or write YAML/JSON directly below.
 			</p>
+
+			<!-- AI Generation Section -->
+			<div id="ai-section" style="margin-bottom: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 8px; border: 1px solid #e1e8ed;">
+				<h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Generate Survey with AI</h2>
+
+				<label for="ai-description" style="display: block; font-weight: 600; margin-bottom: 0.5rem;">
+					Describe your survey in plain text:
+				</label>
+				<textarea
+					id="ai-description"
+					maxlength="2000"
+					placeholder="Example: I want to survey my motorcycle club about where to ride this month. Options should include Volcano National Park, Waipio Valley, South Point, and North Kohala."
+					style="width: 100%; min-height: 120px; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical; font-size: 1rem;"
+				></textarea>
+				<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+					<small id="char-counter" style="color: #7f8c8d;">0 / 2000 characters</small>
+				</div>
+
+				<div style="margin: 1rem 0; padding: 0.75rem; background: #e8f4fd; border-left: 4px solid #3498db; border-radius: 4px;">
+					<p style="margin: 0; color: #2c3e50; font-size: 0.9rem;">
+						💡 <strong>Tip:</strong> Paste an email, write bullet points, or just describe what you want to ask. The AI will structure it into a proper survey.
+					</p>
+				</div>
+
+				<div style="margin: 1rem 0;">
+					<label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+						<input type="checkbox" id="ai-consent" style="cursor: pointer;"/>
+						<span style="font-size: 0.9rem;">I consent to sending my description to OpenAI for processing</span>
+					</label>
+				</div>
+
+				<div id="ai-error" style="display: none; margin: 1rem 0; padding: 0.75rem; background: #fee; border: 1px solid #fcc; border-radius: 4px; color: #c33;">
+					<!-- Error messages appear here -->
+				</div>
+
+				<div style="display: flex; gap: 1rem; align-items: center;">
+					<button type="button" id="generate-btn" class="btn" style="flex: 1;" disabled>
+						Generate Survey
+					</button>
+					<button type="button" id="toggle-editor-btn" class="btn btn-secondary">
+						Skip to Advanced Editor
+					</button>
+				</div>
+
+				<div id="ai-loading" style="display: none; margin-top: 1rem; padding: 0.75rem; background: #fff3cd; border-radius: 4px; text-align: center;">
+					<span style="color: #856404;">🔄 Generating survey... This may take 10-15 seconds.</span>
+				</div>
+			</div>
+
+			<div id="editor-section-divider" style="margin: 2rem 0; text-align: center; color: #7f8c8d; font-weight: 600;">
+				OR
+			</div>
 
 			<!-- Documentation Section -->
 			<details style="margin-bottom: 1.5rem; border: 1px solid #e1e8ed; border-radius: 8px; background: #fff;">
@@ -145,6 +197,132 @@ templ CreateSurvey(user *oauth.User, profile *oauth.Profile, posthogKey string) 
 
 		<!-- Monaco Editor from CDN -->
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.0/min/vs/loader.min.js"></script>
+		<script>
+			// AI Generation handlers
+			(function() {
+				var descriptionTextarea = document.getElementById('ai-description');
+				var charCounter = document.getElementById('char-counter');
+				var consentCheckbox = document.getElementById('ai-consent');
+				var generateBtn = document.getElementById('generate-btn');
+				var errorDiv = document.getElementById('ai-error');
+				var loadingDiv = document.getElementById('ai-loading');
+				var toggleEditorBtn = document.getElementById('toggle-editor-btn');
+
+				// Character counter
+				descriptionTextarea.addEventListener('input', function() {
+					var length = descriptionTextarea.value.length;
+					charCounter.textContent = length + ' / 2000 characters';
+					updateGenerateButton();
+				});
+
+				// Consent checkbox
+				consentCheckbox.addEventListener('change', updateGenerateButton);
+
+				function updateGenerateButton() {
+					var hasText = descriptionTextarea.value.trim().length > 0;
+					var hasConsent = consentCheckbox.checked;
+					generateBtn.disabled = !(hasText && hasConsent);
+				}
+
+				// Toggle editor visibility
+				toggleEditorBtn.addEventListener('click', function() {
+					var editorSection = document.getElementById('editor-container').parentElement;
+					var isHidden = editorSection.style.display === 'none';
+					editorSection.style.display = isHidden ? 'block' : 'none';
+					toggleEditorBtn.textContent = isHidden ? 'Hide Advanced Editor' : 'Show Advanced Editor';
+				});
+
+				// Generate survey with AI
+				generateBtn.addEventListener('click', function() {
+					var description = descriptionTextarea.value.trim();
+					var consent = consentCheckbox.checked;
+
+					if (!description) {
+						showError('Please enter a description of your survey.');
+						return;
+					}
+
+					if (!consent) {
+						showError('You must consent to sending your description to OpenAI.');
+						return;
+					}
+
+					hideError();
+					generateBtn.disabled = true;
+					loadingDiv.style.display = 'block';
+
+					// Call the API
+					fetch('/api/v1/surveys/generate', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({
+							description: description,
+							consent: consent
+						})
+					})
+					.then(function(response) {
+						if (!response.ok) {
+							return response.json().then(function(err) {
+								throw new Error(err.error || 'Failed to generate survey');
+							});
+						}
+						return response.json();
+					})
+					.then(function(data) {
+						loadingDiv.style.display = 'none';
+
+						// Populate Monaco editor with generated definition
+						if (window.surveyEditor && data.definition) {
+							var definitionStr = typeof data.definition === 'string'
+								? data.definition
+								: JSON.stringify(data.definition, null, 2);
+							window.surveyEditor.setValue(definitionStr);
+
+							// Show success message
+							showSuccess('Survey generated successfully! Review and edit below.');
+
+							// Scroll to editor
+							document.getElementById('editor-container').scrollIntoView({
+								behavior: 'smooth',
+								block: 'start'
+							});
+						}
+					})
+					.catch(function(error) {
+						loadingDiv.style.display = 'none';
+						generateBtn.disabled = false;
+						showError(error.message || 'Failed to generate survey. Please try again.');
+					});
+				});
+
+				function showError(message) {
+					errorDiv.textContent = message;
+					errorDiv.style.display = 'block';
+				}
+
+				function hideError() {
+					errorDiv.style.display = 'none';
+				}
+
+				function showSuccess(message) {
+					errorDiv.textContent = message;
+					errorDiv.style.display = 'block';
+					errorDiv.style.background = '#d4edda';
+					errorDiv.style.borderColor = '#c3e6cb';
+					errorDiv.style.color = '#155724';
+
+					// Hide success message after 5 seconds
+					setTimeout(function() {
+						errorDiv.style.display = 'none';
+						errorDiv.style.background = '#fee';
+						errorDiv.style.borderColor = '#fcc';
+						errorDiv.style.color = '#c33';
+					}, 5000);
+				}
+			})();
+		</script>
 		<script>
 			// Configure Monaco AMD loader
 			require.config({

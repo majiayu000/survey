@@ -6,6 +6,7 @@ A standalone survey/polling service with ATProto integration.
 
 - **Multi-question surveys**: Single choice, multiple choice, and free text questions
 - **YAML/JSON definitions**: Define surveys in YAML or JSON
+- **AI Survey Generation**: Create surveys from natural language prompts using OpenAI (optional)
 - **Web UI**: Clean, responsive HTML interface with HTMX
 - **JSON API**: RESTful API for programmatic access
 - **Live results**: Real-time result aggregation with polling
@@ -65,6 +66,138 @@ export OTEL_SERVICE_NAME=survey-api                 # Service name in traces
 # ATProto OAuth (optional - enables "Login with ATProto")
 export OAUTH_SECRET_JWK_B64=<base64-encoded-JWK>   # Generate with: go run ./cmd/keygen
 export SERVER_HOST=https://survey.example.com       # Public URL of your service
+
+# AI Survey Generation (optional - enables OpenAI-powered survey creation)
+export OPENAI_API_KEY=sk-...                        # Your OpenAI API key
+```
+
+## AI Survey Generation
+
+The survey service includes optional AI-powered survey generation that converts natural language descriptions into structured survey JSON using OpenAI's GPT-4o-mini.
+
+### Configuration
+
+Enable AI generation by setting the OpenAI API key:
+
+```bash
+export OPENAI_API_KEY=sk-...
+```
+
+If the API key is not set, the `/api/v1/surveys/generate` endpoint will return `503 Service Unavailable`.
+
+### API Endpoint
+
+**POST** `/api/v1/surveys/generate`
+
+**Request:**
+```json
+{
+  "description": "Create a feedback survey for my photography meetup - ask about venue rating, useful topics, and suggestions",
+  "existing_json": "",  // Optional: for iterative refinement
+  "consent": true       // Required: user must consent to OpenAI processing
+}
+```
+
+**Response (Success):**
+```json
+{
+  "survey_json": {
+    "questions": [
+      {
+        "id": "q1",
+        "text": "How would you rate the venue?",
+        "type": "single",
+        "options": [
+          {"id": "opt1", "text": "1 - Poor"},
+          {"id": "opt2", "text": "2"},
+          {"id": "opt3", "text": "3"},
+          {"id": "opt4", "text": "4"},
+          {"id": "opt5", "text": "5 - Excellent"}
+        ]
+      }
+    ],
+    "anonymous": false
+  },
+  "tokens_used": 350,
+  "cost": 0.00055
+}
+```
+
+**Error Responses:**
+- `400 Bad Request` - Missing consent, empty description, input too long, or blocked pattern
+- `429 Too Many Requests` - Rate limit exceeded
+- `503 Service Unavailable` - AI generation not configured or budget exceeded
+
+### Rate Limits
+
+The service implements per-replica in-memory rate limiting:
+
+| User Type | Limit | Notes |
+|-----------|-------|-------|
+| Anonymous (by IP) | 2 per hour | Conservative limit to prevent abuse |
+| Authenticated (by DID) | 10 per day | Generous limit for legitimate users |
+
+**Multi-replica behavior**: With N replicas, effective limits are N× the configured values (e.g., 3 replicas = 6/hr effective for anonymous). This is acceptable for MVP - cost limits are the primary protection.
+
+### Cost Controls
+
+Each replica enforces a daily budget:
+- **Daily budget**: $10 per replica
+- **Estimated cost per generation**: ~$0.0005-0.0006
+
+This allows ~18,000 generations per replica per day before the budget is exceeded.
+
+### Security Features
+
+1. **Input Validation**
+   - Maximum 2,000 characters
+   - Character whitelist (alphanumeric + basic punctuation)
+   - Blocked patterns detection (e.g., "ignore previous instructions")
+
+2. **Output Sanitization**
+   - JSON parsing and validation
+   - XSS prevention via HTML sanitization
+   - Schema validation against survey definition constraints
+
+3. **Privacy**
+   - Explicit consent required before sending data to OpenAI
+   - No PII included in prompts (only survey description)
+   - Prompts and responses not logged (only metrics)
+
+### Web UI
+
+The `/surveys/new` page includes an AI generation section where users can:
+1. Enter a natural language description (up to 2,000 characters)
+2. Accept consent checkbox for OpenAI processing
+3. Click "Generate Survey" to create the survey JSON
+4. Review and edit the generated survey in the Monaco editor
+5. Preview and submit
+
+The AI section works alongside the Monaco JSON/YAML editor - users can skip AI and write surveys manually if preferred.
+
+### Monitoring
+
+The following Prometheus metrics track AI generation:
+
+```
+survey_ai_generations_total{status="success|error|rate_limited|budget_exceeded"}
+survey_ai_generation_duration_seconds
+survey_ai_tokens_total{type="input|output"}
+survey_ai_daily_cost_usd
+survey_ai_rate_limit_hits_total{user_type="anonymous|authenticated"}
+```
+
+### Testing
+
+Use the `FakeLLM` provider for testing without making real API calls:
+
+```go
+import "github.com/tmc/langchaingo/llms/fake"
+
+fakeLLM := fake.NewFakeLLM(func(ctx context.Context, prompt string) (string, error) {
+    return `{"questions":[{"id":"q1","text":"Test?","type":"single","options":[{"id":"yes","text":"Yes"}]}]}`, nil
+})
+generator := generator.NewSurveyGenerator(fakeLLM, "fake-model")
 ```
 
 **Tracing**: The service exports traces to Jaeger via OTLP HTTP. HTTP requests (via otelecho) and database queries (via otelsql) are automatically traced. If the OTLP endpoint is unavailable, the service logs a warning and continues running. To run Jaeger locally:
@@ -130,6 +263,7 @@ go run ./cmd/consumer
 | Endpoint | Description |
 |----------|-------------|
 | `POST /api/v1/surveys` | Create survey |
+| `POST /api/v1/surveys/generate` | Generate survey using AI (requires consent) |
 | `GET /api/v1/surveys/:slug` | Get survey by slug |
 | `POST /api/v1/surveys/:slug/responses` | Submit response |
 | `GET /api/v1/surveys/:slug/results` | Get results |

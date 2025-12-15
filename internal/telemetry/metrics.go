@@ -127,6 +127,55 @@ var (
 
 	// Note: Removed UniqueVoters and UniqueSurveyAuthors gauges
 	// These require periodic DB queries to populate - use SQL queries in dashboards instead
+
+	// AI Survey Generation metrics
+
+	// AIGenerationsTotal tracks AI survey generation requests
+	// Labels: status (success, error, rate_limited, budget_exceeded)
+	AIGenerationsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "survey_ai_generations_total",
+			Help: "Total number of AI survey generation requests",
+		},
+		[]string{"status"},
+	)
+
+	// AIGenerationDuration tracks latency of AI generation
+	AIGenerationDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "survey_ai_generation_duration_seconds",
+			Help:    "AI survey generation latency in seconds",
+			Buckets: []float64{0.5, 1, 2, 5, 10, 20, 30}, // AI calls can be slow
+		},
+	)
+
+	// AITokensTotal tracks token usage for cost tracking
+	// Labels: type (input, output)
+	AITokensTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "survey_ai_tokens_total",
+			Help: "Total number of tokens used in AI generation",
+		},
+		[]string{"type"},
+	)
+
+	// AIDailyCostUSD tracks daily cost in USD
+	AIDailyCostUSD = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "survey_ai_daily_cost_usd",
+			Help: "Estimated daily cost of AI generation in USD",
+		},
+	)
+
+	// AIRateLimitHitsTotal tracks rate limit hits
+	// Labels: user_type (anonymous, authenticated)
+	AIRateLimitHitsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "survey_ai_rate_limit_hits_total",
+			Help: "Total number of rate limit hits for AI generation",
+		},
+		[]string{"user_type"},
+	)
 )
 
 // RegisterMetrics registers all Prometheus metrics

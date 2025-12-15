@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/openmeet-team/survey/internal/generator"
 	"github.com/openmeet-team/survey/internal/models"
 	"github.com/openmeet-team/survey/internal/oauth"
 	"github.com/openmeet-team/survey/internal/telemetry"
@@ -35,12 +36,25 @@ type QueriesInterface interface {
 	GetStats(ctx context.Context) (*models.Stats, error)
 }
 
+// GeneratorInterface defines the interface for AI survey generation
+type GeneratorInterface interface {
+	Generate(ctx context.Context, prompt string) (*generator.GenerateResult, error)
+}
+
+// RateLimiterInterface defines the interface for rate limiting
+type RateLimiterInterface interface {
+	AllowAnonymous(ip string) bool
+	AllowAuthenticated(did string) bool
+}
+
 // Handlers holds the HTTP handlers and dependencies
 type Handlers struct {
 	queries      QueriesInterface
 	oauthStorage *oauth.Storage
 	supportURL   string
 	posthogKey   string
+	generator    GeneratorInterface
+	generatorRL  RateLimiterInterface
 }
 
 // NewHandlers creates a new Handlers instance
@@ -69,6 +83,12 @@ func (h *Handlers) SetSupportURL(url string) {
 // SetPostHogKey sets the PostHog API key for analytics
 func (h *Handlers) SetPostHogKey(key string) {
 	h.posthogKey = key
+}
+
+// SetGenerator sets the AI generator and rate limiter for survey generation
+func (h *Handlers) SetGenerator(gen GeneratorInterface, rl RateLimiterInterface) {
+	h.generator = gen
+	h.generatorRL = rl
 }
 
 // CreateSurvey creates a new survey
@@ -1182,4 +1202,142 @@ func (h *Handlers) DeleteRecordsHTML(c echo.Context) error {
 
 	// Redirect back to collection view
 	return c.Redirect(http.StatusSeeOther, "/my-data/"+collection)
+}
+
+// GenerateSurvey handles AI survey generation requests
+// POST /api/v1/surveys/generate
+func (h *Handlers) GenerateSurvey(c echo.Context) error {
+	// Parse request
+	var req GenerateSurveyRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error:   "Invalid request body",
+			Details: err.Error(),
+		})
+	}
+
+	// Check consent
+	if !req.Consent {
+		return c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "AI generation requires explicit consent for OpenAI processing",
+		})
+	}
+
+	// Validate description
+	if strings.TrimSpace(req.Description) == "" {
+		return c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "Description cannot be empty",
+		})
+	}
+
+	// Check if generator is configured
+	if h.generator == nil {
+		return c.JSON(http.StatusServiceUnavailable, ErrorResponse{
+			Error: "AI survey generation is not available",
+		})
+	}
+
+	// Check if rate limiter is configured
+	if h.generatorRL == nil {
+		return c.JSON(http.StatusServiceUnavailable, ErrorResponse{
+			Error: "AI survey generation is not available",
+		})
+	}
+
+	// Get user context (authenticated vs anonymous)
+	user := oauth.GetUser(c)
+	var allowed bool
+
+	if user != nil {
+		// Authenticated user - check DID-based rate limit
+		allowed = h.generatorRL.AllowAuthenticated(user.DID)
+	} else {
+		// Anonymous user - check IP-based rate limit
+		ip := getClientIP(c)
+		allowed = h.generatorRL.AllowAnonymous(ip)
+	}
+
+	if !allowed {
+		// Record rate limit hit metric
+		if user != nil {
+			telemetry.AIRateLimitHitsTotal.WithLabelValues("authenticated").Inc()
+		} else {
+			telemetry.AIRateLimitHitsTotal.WithLabelValues("anonymous").Inc()
+		}
+		telemetry.AIGenerationsTotal.WithLabelValues("rate_limited").Inc()
+
+		return c.JSON(http.StatusTooManyRequests, ErrorResponse{
+			Error: "Rate limit exceeded for AI generation. Please try again later.",
+		})
+	}
+
+	// Build prompt
+	prompt := req.Description
+	if req.ExistingJSON != "" {
+		prompt = fmt.Sprintf("Existing survey JSON: %s\n\nModification request: %s", req.ExistingJSON, req.Description)
+	}
+
+	// Record duration metric
+	start := time.Now()
+
+	// Call generator
+	result, err := h.generator.Generate(c.Request().Context(), prompt)
+
+	// Record duration
+	duration := time.Since(start).Seconds()
+	telemetry.AIGenerationDuration.Observe(duration)
+	if err != nil {
+		// Check error type for specific responses
+		if errors.Is(err, generator.ErrInputTooLong) {
+			telemetry.AIGenerationsTotal.WithLabelValues("error").Inc()
+			return c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error:   "Input too long",
+				Details: err.Error(),
+			})
+		}
+		if errors.Is(err, generator.ErrEmptyInput) {
+			telemetry.AIGenerationsTotal.WithLabelValues("error").Inc()
+			return c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error:   "Input cannot be empty",
+				Details: err.Error(),
+			})
+		}
+		if errors.Is(err, generator.ErrBlockedPattern) {
+			telemetry.AIGenerationsTotal.WithLabelValues("error").Inc()
+			return c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error:   "Input contains blocked pattern",
+				Details: "Your input was flagged for potentially unsafe content",
+			})
+		}
+		if errors.Is(err, generator.ErrCostLimitExceeded) {
+			telemetry.AIGenerationsTotal.WithLabelValues("budget_exceeded").Inc()
+			return c.JSON(http.StatusServiceUnavailable, ErrorResponse{
+				Error: "AI generation budget exceeded. Please try again later.",
+			})
+		}
+
+		// Generic error
+		telemetry.AIGenerationsTotal.WithLabelValues("error").Inc()
+		c.Logger().Errorf("AI generation failed: %v", err)
+		return c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error:   "AI generation failed",
+			Details: err.Error(),
+		})
+	}
+
+	// Record success metrics
+	telemetry.AIGenerationsTotal.WithLabelValues("success").Inc()
+	telemetry.AITokensTotal.WithLabelValues("input").Add(float64(result.InputTokens))
+	telemetry.AITokensTotal.WithLabelValues("output").Add(float64(result.OutputTokens))
+
+	// Update daily cost (additive - gauge tracks cumulative cost for the day)
+	telemetry.AIDailyCostUSD.Add(result.EstimatedCost)
+
+	// Return success response
+	return c.JSON(http.StatusOK, GenerateSurveyResponse{
+		Definition:   result.Definition,
+		TokensUsed:   result.InputTokens + result.OutputTokens,
+		Cost:         result.EstimatedCost,
+		NeedsCaptcha: false, // MVP: no captcha implementation yet
+	})
 }

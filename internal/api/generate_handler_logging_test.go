@@ -34,6 +34,7 @@ type LogErrorParams struct {
 	UserType     string
 	InputPrompt  string
 	SystemPrompt string
+	RawResponse  string
 	Status       string
 	ErrorMessage string
 	DurationMS   int
@@ -67,6 +68,7 @@ func (m *MockGenerationLogger) LogError(
 	userType string,
 	inputPrompt string,
 	systemPrompt string,
+	rawResponse string,
 	status string,
 	errorMessage string,
 	inputTokens int,
@@ -79,6 +81,7 @@ func (m *MockGenerationLogger) LogError(
 		UserType:     userType,
 		InputPrompt:  inputPrompt,
 		SystemPrompt: systemPrompt,
+		RawResponse:  rawResponse,
 		Status:       status,
 		ErrorMessage: errorMessage,
 		DurationMS:   durationMS,

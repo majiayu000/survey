@@ -114,7 +114,8 @@ func (l *GenerationLogger) LogError(
 	userType string,
 	inputPrompt string,
 	systemPrompt string,
-	status string, // "error", "rate_limited", "validation_failed"
+	rawResponse string, // LLM response even if validation failed
+	status string,      // "error", "rate_limited", "validation_failed"
 	errorMessage string,
 	inputTokens int,
 	outputTokens int,
@@ -132,7 +133,7 @@ func (l *GenerationLogger) LogError(
 		UserType:     userType,
 		InputPrompt:  inputPrompt,
 		SystemPrompt: systemPrompt,
-		RawResponse:  "",
+		RawResponse:  rawResponse,
 		Status:       status,
 		ErrorMessage: errorMessage,
 		InputTokens:  inputTokens,

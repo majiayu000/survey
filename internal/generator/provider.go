@@ -125,7 +125,15 @@ func (g *SurveyGenerator) generateInternal(ctx context.Context, prompt string) (
 	// Sanitize and validate output
 	definition, err := g.sanitizer.Sanitize(responseText)
 	if err != nil {
-		return nil, fmt.Errorf("invalid LLM output: %w", err)
+		// Return partial result with raw response for debugging/logging
+		return &GenerateResult{
+			Definition:    nil,
+			InputTokens:   inputTokens,
+			OutputTokens:  g.estimateTokens(responseText),
+			EstimatedCost: estimatedCost,
+			SystemPrompt:  systemPrompt,
+			RawResponse:   responseText,
+		}, fmt.Errorf("invalid LLM output: %w", err)
 	}
 
 	// Count actual tokens from response metadata if available

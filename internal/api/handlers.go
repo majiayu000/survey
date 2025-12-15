@@ -52,7 +52,7 @@ type RateLimiterInterface interface {
 // GenerationLoggerInterface defines the interface for logging AI generation attempts
 type GenerationLoggerInterface interface {
 	LogSuccess(ctx context.Context, userID, userType, inputPrompt, systemPrompt, rawResponse string, result *generator.GenerateResult, durationMS int) error
-	LogError(ctx context.Context, userID, userType, inputPrompt, systemPrompt, status, errorMessage string, inputTokens, outputTokens int, costUSD float64, durationMS int) error
+	LogError(ctx context.Context, userID, userType, inputPrompt, systemPrompt, rawResponse, status, errorMessage string, inputTokens, outputTokens int, costUSD float64, durationMS int) error
 }
 
 // Handlers holds the HTTP handlers and dependencies
@@ -1309,6 +1309,7 @@ func (h *Handlers) GenerateSurvey(c echo.Context) error {
 				userType,
 				req.Description,
 				"", // System prompt not available yet
+				"", // No LLM call yet, no raw response
 				"rate_limited",
 				"Rate limit exceeded",
 				0, 0, 0.0, 0,
@@ -1331,6 +1332,7 @@ func (h *Handlers) GenerateSurvey(c echo.Context) error {
 				userType,
 				req.Description,
 				"",
+				"", // No LLM call yet, no raw response
 				"validation_failed",
 				err.Error(),
 				0, 0, 0.0, 0,
@@ -1371,6 +1373,17 @@ func (h *Handlers) GenerateSurvey(c echo.Context) error {
 		var status string
 		var errorMessage string
 
+		// Extract raw response from partial result if available
+		var rawResponse string
+		var inputTokens, outputTokens int
+		var costUSD float64
+		if result != nil {
+			rawResponse = result.RawResponse
+			inputTokens = result.InputTokens
+			outputTokens = result.OutputTokens
+			costUSD = result.EstimatedCost
+		}
+
 		// Check error type for specific responses
 		if errors.Is(err, generator.ErrInputTooLong) || errors.Is(err, generator.ErrEmptyInput) || errors.Is(err, generator.ErrBlockedPattern) {
 			status = "validation_failed"
@@ -1385,9 +1398,10 @@ func (h *Handlers) GenerateSurvey(c echo.Context) error {
 					userType,
 					req.Description,
 					"", // System prompt not available on validation failure
+					rawResponse,
 					status,
 					errorMessage,
-					0, 0, 0.0,
+					inputTokens, outputTokens, costUSD,
 					durationMS,
 				)
 			}
@@ -1426,9 +1440,10 @@ func (h *Handlers) GenerateSurvey(c echo.Context) error {
 					userType,
 					req.Description,
 					"", // System prompt not available
+					rawResponse,
 					status,
 					errorMessage,
-					0, 0, 0.0,
+					inputTokens, outputTokens, costUSD,
 					durationMS,
 				)
 			}
@@ -1438,22 +1453,23 @@ func (h *Handlers) GenerateSurvey(c echo.Context) error {
 			})
 		}
 
-		// Generic error
+		// Generic error (includes "invalid LLM output" errors)
 		status = "error"
 		errorMessage = err.Error()
 		telemetry.AIGenerationsTotal.WithLabelValues("error").Inc()
 
-		// Log generic error
+		// Log generic error - now includes raw response from partial result
 		if h.generationLog != nil {
 			_ = h.generationLog.LogError(
 				c.Request().Context(),
 				userID,
 				userType,
 				req.Description,
-				"", // System prompt not available
+				"", // System prompt could be extracted from result if needed
+				rawResponse,
 				status,
 				errorMessage,
-				0, 0, 0.0,
+				inputTokens, outputTokens, costUSD,
 				durationMS,
 			)
 		}

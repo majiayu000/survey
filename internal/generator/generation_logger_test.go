@@ -116,9 +116,10 @@ func TestGenerationLogger_LogError(t *testing.T) {
 	userType := "anonymous"
 	inputPrompt := "Create a survey with 1000 questions"
 	systemPrompt := "You are a survey generator..."
-	errorMsg := "input too long: exceeds 2000 characters"
+	rawResponse := `{"questions":[]}`
+	errorMsg := "invalid LLM output: survey must have at least one question"
 
-	err := logger.LogError(ctx, userID, userType, inputPrompt, systemPrompt, "validation_failed", errorMsg, 0, 0, 0.0, 50)
+	err := logger.LogError(ctx, userID, userType, inputPrompt, systemPrompt, rawResponse, "error", errorMsg, 100, 50, 0.001, 1500)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -139,17 +140,23 @@ func TestGenerationLogger_LogError(t *testing.T) {
 	if log.UserType != userType {
 		t.Errorf("Expected user_type=%s, got %s", userType, log.UserType)
 	}
-	if log.Status != "validation_failed" {
-		t.Errorf("Expected status=validation_failed, got %s", log.Status)
+	if log.Status != "error" {
+		t.Errorf("Expected status=error, got %s", log.Status)
 	}
 	if log.ErrorMessage != errorMsg {
 		t.Errorf("Expected error_message=%s, got %s", errorMsg, log.ErrorMessage)
 	}
-	if log.RawResponse != "" {
-		t.Errorf("Expected empty raw_response for error, got %s", log.RawResponse)
+	if log.RawResponse != rawResponse {
+		t.Errorf("Expected raw_response=%s, got %s", rawResponse, log.RawResponse)
 	}
-	if log.DurationMS != 50 {
-		t.Errorf("Expected duration_ms=50, got %d", log.DurationMS)
+	if log.InputTokens != 100 {
+		t.Errorf("Expected input_tokens=100, got %d", log.InputTokens)
+	}
+	if log.OutputTokens != 50 {
+		t.Errorf("Expected output_tokens=50, got %d", log.OutputTokens)
+	}
+	if log.DurationMS != 1500 {
+		t.Errorf("Expected duration_ms=1500, got %d", log.DurationMS)
 	}
 }
 
@@ -163,7 +170,7 @@ func TestGenerationLogger_LogRateLimited(t *testing.T) {
 	inputPrompt := "Another survey"
 	systemPrompt := "You are a survey generator..."
 
-	err := logger.LogError(ctx, userID, userType, inputPrompt, systemPrompt, "rate_limited", "Rate limit exceeded", 0, 0, 0.0, 0)
+	err := logger.LogError(ctx, userID, userType, inputPrompt, systemPrompt, "", "rate_limited", "Rate limit exceeded", 0, 0, 0.0, 0)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -186,7 +193,7 @@ func TestGenerationLogger_NilLogger(t *testing.T) {
 		t.Errorf("Nil logger should not error, got %v", err)
 	}
 
-	err = logger.LogError(ctx, "did:test", "authenticated", "prompt", "system", "error", "message", 0, 0, 0.0, 100)
+	err = logger.LogError(ctx, "did:test", "authenticated", "prompt", "system", "raw_response", "error", "message", 0, 0, 0.0, 100)
 
 	if err != nil {
 		t.Errorf("Nil logger should not error, got %v", err)

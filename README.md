@@ -108,12 +108,19 @@ go run ./cmd/consumer
 
 ### Endpoints
 
+#### HTML Routes (Web UI)
+
 | Endpoint | Description |
 |----------|-------------|
-| `GET /` | Survey list (HTML) |
-| `GET /surveys/new` | Create survey form (HTML) |
-| `GET /surveys/:slug` | Survey form (HTML) |
-| `GET /surveys/:slug/results` | Results page (HTML) |
+| `GET /` | Landing page with stats |
+| `GET /surveys/new` | Create survey form |
+| `GET /surveys/:slug` | Survey form (vote) |
+| `GET /surveys/:slug/results` | Results page |
+| `GET /s/:slug` | Short URL redirect |
+| `GET /at/:did/:rkey` | ATProto URL redirect |
+| `GET /my-data` | PDS browser overview |
+| `GET /my-data/:collection` | List collection records |
+| `GET /my-data/:collection/:rkey` | Edit single record |
 | `GET /health` | Liveness probe |
 | `GET /health/ready` | Readiness probe (checks DB) |
 | `GET /metrics` | Prometheus metrics |
@@ -123,10 +130,11 @@ go run ./cmd/consumer
 | Endpoint | Description |
 |----------|-------------|
 | `POST /api/v1/surveys` | Create survey |
-| `GET /api/v1/surveys` | List surveys |
-| `GET /api/v1/surveys/:slug` | Get survey |
+| `GET /api/v1/surveys/:slug` | Get survey by slug |
 | `POST /api/v1/surveys/:slug/responses` | Submit response |
 | `GET /api/v1/surveys/:slug/results` | Get results |
+
+**Note:** Public list endpoints (`GET /surveys` and `GET /api/v1/surveys`) were intentionally removed. Surveys are only accessible via direct link to prevent discovery of all surveys.
 
 ## Survey Definition Format
 
@@ -189,7 +197,8 @@ make test-e2e
 ```
 
 **What's tested:**
-- Survey creation and listing (YAML/JSON parsing)
+- Survey creation and retrieval by slug (YAML/JSON parsing)
+- List endpoint removal (returns 404)
 - Response submission with validation
 - Duplicate vote prevention (voter session hashing)
 - Invalid answer rejection
@@ -208,16 +217,11 @@ survey/
 │   └── consumer/         # survey-consumer entrypoint
 ├── internal/
 │   ├── api/              # HTTP handlers, router, middleware
-│   │   ├── handlers_test.go     # Unit tests (mocks)
-│   │   └── e2e_test.go          # E2E tests (real DB)
 │   ├── consumer/         # Jetstream consumer
-│   │   ├── jetstream.go         # WebSocket client
-│   │   ├── processor.go         # Message routing & CRUD
-│   │   ├── cursor.go            # Cursor persistence
-│   │   └── atproto.go           # Record parsing
 │   ├── db/               # Database access and migrations
-│   ├── telemetry/        # Metrics setup
 │   ├── models/           # Domain models
+│   ├── oauth/            # ATProto OAuth + PDS integration
+│   ├── telemetry/        # Metrics setup
 │   └── templates/        # Templ templates
 ├── lexicon/              # ATProto lexicon schemas
 ├── k8s/                  # Kubernetes manifests

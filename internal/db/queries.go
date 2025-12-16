@@ -742,7 +742,10 @@ func (q *Queries) GetStats(ctx context.Context) (*models.Stats, error) {
 		SELECT
 			(SELECT COUNT(*) FROM surveys) as survey_count,
 			(SELECT COUNT(*) FROM responses) as response_count,
-			(SELECT COUNT(DISTINCT voter_did) FROM responses WHERE voter_did IS NOT NULL) as user_count
+			(
+				(SELECT COUNT(DISTINCT voter_did) FROM responses WHERE voter_did IS NOT NULL) +
+				(SELECT COUNT(DISTINCT voter_session) FROM responses WHERE voter_session IS NOT NULL AND voter_did IS NULL)
+			) as user_count
 	`
 
 	stats := &models.Stats{}

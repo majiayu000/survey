@@ -125,14 +125,24 @@ func (m *MockQueries) GetStats(ctx context.Context) (*models.Stats, error) {
 	// Count total responses
 	responseCount := len(m.responses)
 
-	// Count unique DIDs
+	// Count unique authenticated users (DIDs)
 	uniqueDIDs := make(map[string]bool)
 	for _, response := range m.responses {
 		if response.VoterDID != nil && *response.VoterDID != "" {
 			uniqueDIDs[*response.VoterDID] = true
 		}
 	}
-	uniqueUserCount := len(uniqueDIDs)
+
+	// Count unique anonymous users (sessions where voter_did is null)
+	uniqueSessions := make(map[string]bool)
+	for _, response := range m.responses {
+		if response.VoterDID == nil && response.VoterSession != nil && *response.VoterSession != "" {
+			uniqueSessions[*response.VoterSession] = true
+		}
+	}
+
+	// Total unique users = authenticated + anonymous
+	uniqueUserCount := len(uniqueDIDs) + len(uniqueSessions)
 
 	return &models.Stats{
 		SurveyCount:     surveyCount,
@@ -925,6 +935,146 @@ func TestGetStats_Success(t *testing.T) {
 	assert.Equal(t, 2, stats.SurveyCount, "Should have 2 surveys")
 	assert.Equal(t, 3, stats.ResponseCount, "Should have 3 responses")
 	assert.Equal(t, 2, stats.UniqueUserCount, "Should have 2 unique users")
+}
+
+// RED PHASE: Test GetStats counts both authenticated and anonymous users
+func TestGetStats_CountsAuthenticatedAndAnonymousUsers(t *testing.T) {
+	_, mq, _ := setupTest()
+
+	// Create test survey
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "test-survey",
+		Title: "Test Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Question 1",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Create responses from authenticated users
+	did1 := "did:plc:user1"
+	did2 := "did:plc:user2"
+	did3 := "did:plc:user3"
+
+	response1 := &models.Response{
+		ID:       uuid.New(),
+		SurveyID: survey.ID,
+		VoterDID: &did1,
+		Answers:  map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt: time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response1)
+
+	response2 := &models.Response{
+		ID:       uuid.New(),
+		SurveyID: survey.ID,
+		VoterDID: &did2,
+		Answers:  map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt: time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response2)
+
+	response3 := &models.Response{
+		ID:       uuid.New(),
+		SurveyID: survey.ID,
+		VoterDID: &did3,
+		Answers:  map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt: time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response3)
+
+	// Create response from anonymous user (voter_session, no voter_did)
+	session1 := "session_abc123"
+	response4 := &models.Response{
+		ID:           uuid.New(),
+		SurveyID:     survey.ID,
+		VoterSession: &session1,
+		Answers:      map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt:    time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response4)
+
+	// Test GetStats - should count both authenticated (3) and anonymous (1) = 4 unique users
+	stats, err := mq.GetStats(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, stats.SurveyCount, "Should have 1 survey")
+	assert.Equal(t, 4, stats.ResponseCount, "Should have 4 responses")
+	assert.Equal(t, 4, stats.UniqueUserCount, "Should have 4 unique users (3 authenticated + 1 anonymous)")
+}
+
+// RED PHASE: Test GetStats handles duplicate sessions correctly
+func TestGetStats_DeduplicatesAnonymousSessions(t *testing.T) {
+	_, mq, _ := setupTest()
+
+	// Create test survey
+	survey := &models.Survey{
+		ID:    uuid.New(),
+		Slug:  "test-survey",
+		Title: "Test Survey",
+		Definition: models.SurveyDefinition{
+			Questions: []models.Question{
+				{
+					ID:       "q1",
+					Text:     "Question 1",
+					Type:     models.QuestionTypeSingle,
+					Required: true,
+					Options:  []models.Option{{ID: "a", Text: "A"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	mq.CreateSurvey(context.Background(), survey)
+
+	// Create multiple responses from same anonymous session
+	session1 := "session_abc123"
+	response1 := &models.Response{
+		ID:           uuid.New(),
+		SurveyID:     survey.ID,
+		VoterSession: &session1,
+		Answers:      map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt:    time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response1)
+
+	response2 := &models.Response{
+		ID:           uuid.New(),
+		SurveyID:     survey.ID,
+		VoterSession: &session1, // Same session
+		Answers:      map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt:    time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response2)
+
+	// Create response from different anonymous session
+	session2 := "session_xyz789"
+	response3 := &models.Response{
+		ID:           uuid.New(),
+		SurveyID:     survey.ID,
+		VoterSession: &session2,
+		Answers:      map[string]models.Answer{"q1": {SelectedOptions: []string{"a"}}},
+		CreatedAt:    time.Now(),
+	}
+	mq.CreateResponse(context.Background(), response3)
+
+	// Test GetStats - should count only 2 unique anonymous users despite 3 responses
+	stats, err := mq.GetStats(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, stats.SurveyCount, "Should have 1 survey")
+	assert.Equal(t, 3, stats.ResponseCount, "Should have 3 responses")
+	assert.Equal(t, 2, stats.UniqueUserCount, "Should have 2 unique anonymous users")
 }
 
 // RED PHASE: Test LandingPageHTML - renders landing page with stats

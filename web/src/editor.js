@@ -3,6 +3,8 @@
  * Uses Monaco from CDN to avoid worker bundling issues
  */
 
+import yaml from 'js-yaml'
+
 // Survey definition JSON Schema - matches internal/models/survey.go
 const surveySchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
@@ -684,111 +686,24 @@ class SurveyEditor {
     this.editor.setValue(converted)
   }
 
-  // Simple YAML to object parser for survey structure
+  // Parse YAML string to object using js-yaml library
+  parseYaml(yamlStr) {
+    return yaml.load(yamlStr)
+  }
+
+  // Alias for backwards compatibility with template code
   parseSimpleYaml(yamlStr) {
-    // Try JSON first
-    try {
-      return JSON.parse(yamlStr)
-    } catch {}
-
-    const lines = yamlStr.split('\n')
-    const result = { questions: [] }
-    let currentQuestion = null
-    let currentOptions = []
-    let inQuestions = false
-    let inOptions = false
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) continue
-
-      const indent = line.search(/\S/)
-
-      if (trimmed.startsWith('questions:')) {
-        inQuestions = true
-        continue
-      }
-      if (trimmed.startsWith('anonymous:')) {
-        result.anonymous = trimmed.includes('true')
-        continue
-      }
-      if (trimmed.startsWith('startsAt:')) {
-        result.startsAt = trimmed.split(':', 2)[1].trim().replace(/['"]/g, '')
-        continue
-      }
-      if (trimmed.startsWith('endsAt:')) {
-        result.endsAt = trimmed.split(':', 2)[1].trim().replace(/['"]/g, '')
-        continue
-      }
-
-      if (inQuestions && trimmed.startsWith('- id:')) {
-        if (currentQuestion) {
-          if (currentOptions.length > 0) currentQuestion.options = currentOptions
-          result.questions.push(currentQuestion)
-        }
-        currentQuestion = { id: this.extractValue(trimmed, '- id:') }
-        currentOptions = []
-        inOptions = false
-      } else if (currentQuestion) {
-        if (trimmed.startsWith('text:')) {
-          currentQuestion.text = this.extractValue(trimmed, 'text:')
-        } else if (trimmed.startsWith('type:')) {
-          currentQuestion.type = this.extractValue(trimmed, 'type:')
-        } else if (trimmed.startsWith('required:')) {
-          currentQuestion.required = trimmed.includes('true')
-        } else if (trimmed.startsWith('options:')) {
-          inOptions = true
-        } else if (inOptions && trimmed.startsWith('- id:')) {
-          currentOptions.push({ id: this.extractValue(trimmed, '- id:') })
-        } else if (inOptions && trimmed.startsWith('text:') && currentOptions.length > 0) {
-          currentOptions[currentOptions.length - 1].text = this.extractValue(trimmed, 'text:')
-        }
-      }
-    }
-
-    if (currentQuestion) {
-      if (currentOptions.length > 0) currentQuestion.options = currentOptions
-      result.questions.push(currentQuestion)
-    }
-
-    return result
+    return this.parseYaml(yamlStr)
   }
 
-  extractValue(line, prefix) {
-    return line.replace(prefix, '').trim().replace(/^["']|["']$/g, '')
-  }
-
-  // Simple object to YAML serializer
-  toYaml(obj, indent = 0) {
-    const spaces = '  '.repeat(indent)
-    let yaml = ''
-
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === undefined || value === null) continue
-
-      if (key === 'questions' && Array.isArray(value)) {
-        yaml += `${spaces}questions:\n`
-        for (const q of value) {
-          yaml += `${spaces}  - id: ${q.id}\n`
-          yaml += `${spaces}    text: "${q.text}"\n`
-          yaml += `${spaces}    type: ${q.type}\n`
-          if (q.required !== undefined) yaml += `${spaces}    required: ${q.required}\n`
-          if (q.options && q.options.length > 0) {
-            yaml += `${spaces}    options:\n`
-            for (const opt of q.options) {
-              yaml += `${spaces}      - id: ${opt.id}\n`
-              yaml += `${spaces}        text: "${opt.text}"\n`
-            }
-          }
-        }
-      } else if (typeof value === 'boolean') {
-        yaml += `${spaces}${key}: ${value}\n`
-      } else if (typeof value === 'string') {
-        yaml += `${spaces}${key}: "${value}"\n`
-      }
-    }
-
-    return yaml
+  // Convert object to YAML string using js-yaml library
+  toYaml(obj) {
+    return yaml.dump(obj, {
+      indent: 2,
+      lineWidth: -1,  // Don't wrap long lines
+      noRefs: true,   // Don't use YAML references
+      sortKeys: false // Preserve key order
+    })
   }
 
   getValue() {

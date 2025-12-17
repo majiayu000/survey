@@ -85,7 +85,11 @@ func main() {
 		} else {
 			surveyGenerator = generator.NewSurveyGenerator(llm, modelName)
 			generatorRateLimiter = generator.NewRateLimiter()
-			log.Println("AI survey generation enabled with model: " + modelName)
+			config := generator.RateLimiterConfigFromEnv()
+			log.Printf("AI survey generation enabled with model: %s", modelName)
+			log.Printf("AI rate limits - Anonymous: %d requests per %.1f hours, Authenticated: %d requests per %.1f hours",
+				config.AnonLimit, config.AnonWindow.Hours(),
+				config.AuthLimit, config.AuthWindow.Hours())
 		}
 	} else {
 		log.Println("AI survey generation disabled (OPENAI_API_KEY not configured)")

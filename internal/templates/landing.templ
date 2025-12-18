@@ -7,7 +7,10 @@ import (
 )
 
 templ LandingPage(stats *models.Stats, user *oauth.User, profile *oauth.Profile, supportURL string, posthogKey string) {
-	@Layout("Welcome", user, profile, posthogKey) {
+	@LayoutWithOG("OpenMeet Survey", user, profile, posthogKey, &OGMeta{
+		Title:       "OpenMeet Survey - Create and Share Surveys with ATProto",
+		Description: "Create and share surveys with your community using the ATProto ecosystem. Free, open-source, and privacy-focused.",
+	}) {
 		<div class="card" style="text-align: center; padding: 3rem;">
 			<h1 style="font-size: 2.5rem; margin-bottom: 1rem;">Welcome to OpenMeet Survey</h1>
 			<p style="font-size: 1.2rem; color: #7f8c8d; margin-bottom: 2rem;">

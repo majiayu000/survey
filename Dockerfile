@@ -53,6 +53,9 @@ COPY --from=builder /app/internal/db/migrations /migrations
 # Copy frontend assets
 COPY --from=builder /app/web/dist /app/web/dist
 
+# Copy static assets (OG images, etc.)
+COPY --from=builder /app/static /app/static
+
 # Set working directory (so relative paths work)
 WORKDIR /app
 

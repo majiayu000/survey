@@ -38,8 +38,10 @@ func SessionMiddleware(storage *Storage) echo.MiddlewareFunc {
 
 			// Check if session is expired
 			if session.ExpiresAt.Before(time.Now()) {
-				// Expired session - continue without user
-				// TODO: Consider cleaning up expired session here
+				// Expired session - clean it up and continue without user
+				if err := storage.DeleteSession(c.Request().Context(), session.ID); err != nil {
+					c.Logger().Errorf("Failed to delete expired session: %v", err)
+				}
 				return next(c)
 			}
 
